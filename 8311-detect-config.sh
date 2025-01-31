@@ -282,7 +282,7 @@ if [ -n "$SERVICES_PMAP" ]; then
     echo "TC $SERVICES_PMAP ingress:" | debug
     echo "$TC" | debug
 
-    DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | head -n1 | awk '{print $3}')
+    DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $3}')
     [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
 
     # 如果服务VLAN与单播VLAN相同，清空服务VLAN

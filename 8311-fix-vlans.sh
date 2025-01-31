@@ -91,7 +91,7 @@ services_pmap_ds_rules() {
 
 # 配置多播接口的下行规则
 multicast_iface_ds_rules() {
-    # 修改VLAN ID和优先级
+    # 修改VLAN ID与Serivices PMAP相同和优先级
     tc_flower_add dev $MULTICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN priority 5 protocol 802.1Q pass
 }
 
@@ -137,7 +137,7 @@ internet_pmap_us_rules() {
 # 配置Services PMAP的上行规则
 services_pmap_us_rules() {
     # 1. 将服务VLAN修改为单播VLAN
-    tc_flower_add dev $SERVICES_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id $SERVICES_VLAN skip_sw action vlan modify id $UNICAST_VLAN protocol 802.1Q pass &&
+    tc_flower_add dev $SERVICES_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id $SERVICES_VLAN skip_sw action vlan modify id $DEFAULT_SERVICES_VLAN protocol 802.1Q pass &&
     # 2. 丢弃其他带VLAN标签的流量
     tc_flower_add dev $SERVICES_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action drop &&
     # 3. 丢弃所有其他流量
