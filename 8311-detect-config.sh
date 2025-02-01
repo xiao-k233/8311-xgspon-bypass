@@ -84,7 +84,7 @@ disable_config() {
 	echo "# Enable fix_vlans script?" > "$CONFIG_FILE"
 	echo "FIX_ENABLED=0" >> "$CONFIG_FILE"
 
-	echo "Config file written to '$CONFIG_FILE'" >&2
+	echo "Config file written to '$CONFIG_FILE'" 2> >(logger -t "8311 detect vlan" -p daemon.info)
 }
 
 # 将检测到的配置写入配置文件
@@ -120,7 +120,7 @@ write_config() {
     echo "# State Hash" >> "$CONFIG_FILE"
     echo "STATE_HASH=$STATE_HASH" >> "$CONFIG_FILE"
 
-    echo "Config file written to '$CONFIG_FILE'" >&2
+    echo "Config file written to '$CONFIG_FILE'" 2> >(logger -t "8311 detect vlan" -p daemon.info)
 }
 
 # 获取指定PMAP关联的GEM端口
@@ -333,18 +333,18 @@ SERVICES_VLAN=${SERVICES_VLAN:-${DEFAULT_SERVICES_VLAN:-36}}
 
 # 验证VLAN值的有效性
 if ! { [ "$INTERNET_VLAN" -ge 0 ] 2>/dev/null && [ "$INTERNET_VLAN" -le 4095 ]; }; then
-    echo "Internet VLAN '$INTERNET_VLAN' is invalid." >&2
+    echo "Internet VLAN '$INTERNET_VLAN' is invalid." 2> >(logger -t "8311 detect vlan" -p daemon.err)
     exit 1
 fi
 
 if ! { [ "$SERVICES_VLAN" -ge 1 ] 2>/dev/null && [ "$SERVICES_VLAN" -le 4095 ]; }; then
-    echo "Services VLAN '$SERVICES_VLAN' is invalid." >&2
+    echo "Services VLAN '$SERVICES_VLAN' is invalid." 2> >(logger -t "8311 detect vlan" -p daemon.err)
     exit 1
 fi
 
 # 确保Internet VLAN和Services VLAN不相同
 if [ "$INTERNET_VLAN" -eq "$SERVICES_VLAN" ]; then
-    echo "Internet VLAN and Services VLAN must be different." >&2
+    echo "Internet VLAN and Services VLAN must be different." 2> >(logger -t "8311 detect vlan" -p daemon.err)
     exit 1
 fi
 

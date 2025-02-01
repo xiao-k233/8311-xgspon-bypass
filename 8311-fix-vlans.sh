@@ -25,8 +25,8 @@ DETECT_CONFIG=${DETECT_CONFIG:-"/root/8311-detect-config.sh"}
 
 
 # 检查配置检测脚本是否存在
-if [ ! -e "$DETECT_CONFIG" ]; then
-    echo "Required detection script '$DETECT_CONFIG' missing." >&2
+if [ ! -x "$DETECT_CONFIG" ]; then
+    echo "Required detection script '$DETECT_CONFIG' missing." 2> >(logger -t "8311 vlanfix" -p daemon.err)
     exit 1
 fi
 
@@ -47,9 +47,9 @@ if [ ! -f "$CONFIG_FILE" ] || [ "$NEW_STATE_HASH" != "$STATE_HASH" ]; then
     echo "Config file '$CONFIG_FILE' does not exist or state changed, detecting configuration..."
 
     # 运行检测脚本生成新的配置
-    "$DETECT_CONFIG" -c "$CONFIG_FILE" > /dev/null
+    "$DETECT_CONFIG" -c "$CONFIG_FILE" 2> >(logger -t "8311 vlanfix" -p daemon.err)
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Error: Unable to detect configuration." >&2
+        echo "Error: Unable to detect configuration." 2> >(logger -t "8311 vlanfix" -p daemon.err)
         exit 1
     fi
 
@@ -65,8 +65,8 @@ if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
 fi
 
 # 验证必要的配置变量是否存在
-if ! { [ -n "$INTERNET_VLAN" ] && [ -n "$INTERNET_PMAP" ] && [ -n "$UNICAST_VLAN" ]; }; then
-    echo "Required variables INTERNET_VLAN, INTERNET_PMAP, and UNICAST_VLAN are not properly set." >&2
+if [ -z "$INTERNET_VLAN" ] || [ -z "$INTERNET_PMAP" ] || [ -z "$UNICAST_VLAN" ]; then
+    echo "Required variables INTERNET_VLAN, INTERNET_PMAP, and UNICAST_VLAN are not properly set." 2> >(logger -t "8311 vlanfix" -p daemon.err)
     exit 1
 fi
 
