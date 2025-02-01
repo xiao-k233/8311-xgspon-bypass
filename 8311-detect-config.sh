@@ -138,11 +138,11 @@ get_pmap_gems() {
 # 日志记录函数
 log() {
     if [ -z "$LOG_FILE" ]; then
-        cat
+        tee -a /dev/console | logger -t "8311" -p daemon.info
     elif [ "$1" = "-create" ]; then
-        tee "$LOG_FILE"
+        tee -a /dev/console | logger -t "8311" -p daemon.info
     else
-        tee -a "$LOG_FILE"
+        tee -a /dev/console | logger -t "8311" -p daemon.info
     fi
 }
 
