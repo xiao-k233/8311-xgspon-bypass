@@ -2,7 +2,7 @@
 
 # 查找tc命令的完整路径
 TC=$(PATH=/usr/sbin:/sbin /usr/bin/which tc)
-
+omci="/usr/bin/omci_pipe.sh"
 # tc命令包装函数，用于执行tc命令
 tc() {
     $TC "$@"

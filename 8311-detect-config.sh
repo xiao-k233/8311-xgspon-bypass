@@ -115,6 +115,8 @@ write_config() {
     echo "INTERNET_VLAN=${INTERNET_VLAN}" >> "$CONFIG_FILE"
     echo "# Services VLAN exposed to network." >> "$CONFIG_FILE"
     echo "SERVICES_VLAN=${SERVICES_VLAN}" >> "$CONFIG_FILE"
+    echo "# Multicast VLAN exposed to network." >> "$CONFIG_FILE"
+    echo "MULTICAST_VLAN=${MULTICAST_VLAN}" >> "$CONFIG_FILE"
 
     echo >> "$CONFIG_FILE"
     echo "# State Hash" >> "$CONFIG_FILE"
@@ -323,13 +325,24 @@ fi
 # 从固件环境变量获取VLAN设置
 echo "Getting VLAN settings from fwenvs:" | debug
 INTERNET_VLAN=$(fw_printenv -n 8311_internet_vlan 2>/dev/null || fw_printenv -n bell_internet_vlan 2>/dev/null)
-SERVICES_VLAN=$(fw_printenv -n 8311_services_vlan 2>/dev/null || fw_printenv -n bell_services_vlan 2>/dev/null)
+SERVICES_VLAN_RAW=$(fw_printenv -n 8311_services_vlan 2>/dev/null || fw_printenv -n bell_services_vlan 2>/dev/null)
+
+# 处理SERVICES_VLAN中的|分隔符，分别赋值给SERVICES_VLAN和MULTICAST_VLAN
+if [ -n "$SERVICES_VLAN_RAW" ] && echo "$SERVICES_VLAN_RAW" | grep -q '|'; then
+    SERVICES_VLAN=$(echo "$SERVICES_VLAN_RAW" | cut -d'|' -f1)
+    MULTICAST_VLAN=$(echo "$SERVICES_VLAN_RAW" | cut -d'|' -f2)
+else
+    SERVICES_VLAN="$SERVICES_VLAN_RAW"
+fi
+
 echo "8311_internet_vlan=$INTERNET_VLAN" | debug
 echo "8311_services_vlan=$SERVICES_VLAN" | debug
+[ -n "$MULTICAST_VLAN" ] && echo "multicast_vlan=$MULTICAST_VLAN" | debug
 
 # 设置默认值：Internet VLAN默认为0（无标记），Services VLAN默认为36
 INTERNET_VLAN=${INTERNET_VLAN:-0}
 SERVICES_VLAN=${SERVICES_VLAN:-${DEFAULT_SERVICES_VLAN:-36}}
+MULTICAST_VLAN=${MULTICAST_VLAN:-${DEFAULT_SERVICES_VLAN:-36}}
 
 # 验证VLAN值的有效性
 if ! { [ "$INTERNET_VLAN" -ge 0 ] 2>/dev/null && [ "$INTERNET_VLAN" -le 4095 ]; }; then
@@ -342,9 +355,24 @@ if ! { [ "$SERVICES_VLAN" -ge 1 ] 2>/dev/null && [ "$SERVICES_VLAN" -le 4095 ]; 
     exit 1
 fi
 
+if ! { [ "$MULTICAST_VLAN" -ge 1 ] 2>/dev/null && [ "$MULTICAST_VLAN" -le 4095 ]; }; then
+    echo "Multicast VLAN '$MULTICAST_VLAN' is invalid." 2> >(logger -t "8311 detect vlan" -p daemon.err)
+    exit 1
+fi
+
 # 确保Internet VLAN和Services VLAN不相同
 if [ "$INTERNET_VLAN" -eq "$SERVICES_VLAN" ]; then
     echo "Internet VLAN and Services VLAN must be different." 2> >(logger -t "8311 detect vlan" -p daemon.err)
+    exit 1
+fi
+
+if [ "$INTERNET_VLAN" -eq "$MULTICAST_VLAN" ]; then
+    echo "Internet VLAN and Multicast VLAN must be different." 2> >(logger -t "8311 detect vlan" -p daemon.err)
+    exit 1
+fi
+
+if [ "$SERVICES_VLAN" -eq "$MULTICAST_VLAN" ]; then
+    echo "Services VLAN and Multicast VLAN must be different." 2> >(logger -t "8311 detect vlan" -p daemon.err)
     exit 1
 fi
 
@@ -364,5 +392,6 @@ echo "Services GEMs: $SERVICES_GEMS" | log
 echo "Services PMAP: $SERVICES_PMAP" | log
 echo "Internet VLAN: $INTERNET_VLAN" | log
 echo "Services VLAN: $SERVICES_VLAN" | log
+echo "Multicast VLAN: $MULTICAST_VLAN" | log
 
 [ -n "$CONFIG_FILE" ] && write_config

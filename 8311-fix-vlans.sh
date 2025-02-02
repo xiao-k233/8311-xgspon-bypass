@@ -12,7 +12,7 @@ CONFIG_FILE="/tmp/8311-config.sh"
 ####################################################
 # 导入VLAN库函数
 . /root/8311-vlans-lib.sh
-
+omci="/usr/bin/omci_pipe.sh"
 
 ### 基础配置
 # 单播和多播接口定义
@@ -93,8 +93,66 @@ services_pmap_ds_rules() {
 multicast_iface_ds_rules() {
     # 修改VLAN ID与Serivices PMAP相同和优先级
     tc_flower_add dev $MULTICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN priority 5 protocol 802.1Q pass
+    mvlanset
 }
-
+me309create() {
+	me309=`$omci md | grep 309 | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | head -n 1 | sed s/[[:space:]]//g`
+	me309line=`$omci md | grep 309 | wc -l`
+	if [ -z "$me309" ] ||  [ "$me309line" != "2" ]; then
+		logger -t "[vlan]" "creating me309 ..."
+		igmpversion=3
+		me309=1
+		$omci mec 309 $me309 3 0 1 0 0 32
+		$omci meads 309 $me309 10 02
+		$omci meads 309 $me309 12 00 00 00 7d
+		$omci meads 309 $me309 13 00 00 00 64
+		$omci meads 309 $me309 15 01
+		$omci mec 310 $me309 0 $me309 64 0 1
+		$omci mec 311 $me309 0
+		sleep 5
+	else
+		logger -t "[vlan]" "me309 existed."
+		$omci meads 309 $me309 1 0$igmpversion
+	fi
+}
+mvlanset() {
+    $me309=1
+	if [ "$SERVICES_VLAN" -gt 4094 ] || [ "`echo $SERVICES_VLAN | grep -c '^[1-9][0-9]*$'`" == "0" ]; then
+		
+			logger -t "[vlan]" "services vlan $SERVICES_VLAN configuration error."
+		return
+	else
+		me309create
+	fi
+	a309=`printf "%04x" $SERVICES_VLAN`
+	b309=`echo $a309 | sed 's/../& /g'`
+	match309="04 $b309"
+	flag309=`$omci meadg 309 $me309 16 2>&- | cut -f 3 -d '='`
+	if [ "$flag309" == "$match309" ]; then
+		logger -t "[vlan]" "services vlan rule match."
+	else
+		logger -t "[vlan]" "services vlan configuring."
+		$omci meads 309 $me309 16 $match309
+	fi
+	if [ -z "$MULTICAST_VLAN" ]; then
+		logger -t "[vlan]" "no multicast vlan configed."
+		return
+	else
+		if [ "$MULTICAST_VLAN" -gt 4094 ] || [ "`echo $MULTICAST_VLAN | grep -c '^[1-9][0-9]*$'`" == "0" ]; then
+			logger -t "[vlan]" "multicast vlan $MULTICAST_VLAN configuration error."
+			return
+		fi
+	fi
+	sa309=`printf "%04x" $MULTICAST_VLAN`
+	sb309=`echo $sa309 | sed 's/../& /g'`
+	muti_gem_tp_instance=`$omci md | grep "Multicast GEM TP" | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | sed s/[[:space:]]//g`
+	if [ -n "$muti_gem_tp_instance" ]; then
+		gpnctp_ptr=`$omci meadg 281 $muti_gem_tp_instance 1 | sed -n 's/\(attr\_data\=\)/\1/p' | cut -f 3 -d '=' | cut -f 1 -d '(' | sed s/[[:space:]]//g`
+		muti_port=`$omci meadg 268 0x$gpnctp_ptr 1 | cut -f 3 -d '='`
+		logger -t "[vlan]" "got muticast gem tp, muticast port: $muti_port, configuring ..."
+		$omci meads 309 $me309 7 40 00 $muti_port $sb309 00 00 00 00 e0 00 01 00 ef ff ff ff 00 00 00 00 00 00
+	fi
+}
 
 ## 应用下行规则
 # 配置Internet流量
