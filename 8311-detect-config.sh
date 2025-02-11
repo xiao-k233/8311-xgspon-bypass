@@ -133,7 +133,7 @@ get_pmap_gems() {
     echo "PMAP $PMAP Link:" | debug
     echo "$LINK" | debug
     local GEMS=$(echo "$LINK" | grep -oE "gem\d+" | sort -u)
-    echo "PMAP $PMAP GEMs: $(echo $GEMS)" | debug
+    echo "PMAP $PMAP GEMs: $(echo "$GEMS")" | debug
     echo "$GEMS"
 }
 
@@ -233,14 +233,14 @@ if [ -z "$INTERNET_PMAP" ]; then
         # 如果有多个GEM端口的PMAP且Services PMAP未设置，将其设为Services PMAP
         if [ -z "$SERVICES_PMAP" ] && [ "$PMAP_NUM_GEMS" -gt 1 ]; then
             SERVICES_PMAP="$PMAP"
-            SERVICES_GEMS=$(echo $PMAP_GEMS)
+            SERVICES_GEMS=$(echo "$PMAP_GEMS")
             echo | debug
             echo "Services PMAP and GEMs found: $SERVICES_PMAP - $SERVICES_GEMS" | debug
             echo | debug
         # 否则设置为Internet PMAP
         elif [ -z "$INTERNET_PMAP" ]; then
             INTERNET_PMAP="$PMAP"
-            INTERNET_GEMS=$(echo $PMAP_GEMS)
+            INTERNET_GEMS=$(echo "$PMAP_GEMS")
             echo | debug
             echo "Internet PMAP and GEMs found: $INTERNET_PMAP - $INTERNET_GEMS" | debug
             echo | debug

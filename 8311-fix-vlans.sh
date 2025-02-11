@@ -76,25 +76,32 @@ fi
 internet_pmap_ds_rules() {
     if [ "$INTERNET_VLAN" -ne 0 ]; then
         # Tag模式，修改VLAN ID
-        tc_flower_add dev $INTERNET_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $INTERNET_VLAN protocol 802.1Q pass
+        tc_flower_add dev "$INTERNET_PMAP" ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id "$INTERNET_VLAN" protocol 802.1Q pass
     else
         # 对于不带标签的流量，移除VLAN标签
-        tc_flower_add dev $INTERNET_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan pop pass
+        tc_flower_add dev "$INTERNET_PMAP" ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan pop pass
     fi
 }
 
 # 配置Services PMAP的下行规则
 services_pmap_ds_rules() {
     # 修改VLAN ID为服务VLAN
-    tc_flower_add dev $SERVICES_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN protocol 802.1Q pass
+    tc_flower_add dev "$SERVICES_PMAP" ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id "$SERVICES_VLAN" protocol 802.1Q pass
 }
 
 # 配置多播接口的下行规则
 multicast_iface_ds_rules() {
     # 修改VLAN ID与Serivices PMAP相同和优先级
-    tc_flower_add dev $MULTICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN priority 5 protocol 802.1Q pass
+    tc_flower_add dev $MULTICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id "$SERVICES_VLAN" priority 5 protocol 802.1Q pass
     mvlanset
 }
+
+# 配置多播GEM的下行规则
+multicast_gem_ds_rules() {
+    #修改VLANID与Services PMAP相同和优先级
+    tc_flower_add dev "$MULTICAST_GEM" ingress handle 0x1 protocol all pref 1 flower skip_sw action vlan modify id "$SERVICES_VLAN" priority 5 protocol 802.1Q pass
+}
+# 组播309规则创建
 me309create() {
 	me309=`$omci md | grep 309 | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | head -n 1 | sed s/[[:space:]]//g`
 	me309line=`$omci md | grep 309 | wc -l`
@@ -115,8 +122,9 @@ me309create() {
 		$omci meads 309 $me309 1 0$igmpversion
 	fi
 }
+#组播规则创建，来自gpon猫棒的黑魔法
 mvlanset() {
-    $me309=1
+    me309=1
 	if [ "$SERVICES_VLAN" -gt 4094 ] || [ "`echo $SERVICES_VLAN | grep -c '^[1-9][0-9]*$'`" == "0" ]; then
 		
 			logger -t "[vlan]" "services vlan $SERVICES_VLAN configuration error."
@@ -156,19 +164,20 @@ mvlanset() {
 
 ## 应用下行规则
 # 配置Internet流量
-[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $INTERNET_PMAP ingress
-internet_pmap_ds_rules || { tc_flower_clear dev $INTERNET_PMAP ingress; internet_pmap_ds_rules; }
+[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev "$INTERNET_PMAP" ingress
+internet_pmap_ds_rules || { tc_flower_clear dev "$INTERNET_PMAP" ingress; internet_pmap_ds_rules; }
 
 # 配置服务流量（如果存在Services PMAP）
 if [ -n "$SERVICES_PMAP" ]; then
-    [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $SERVICES_PMAP ingress
-    services_pmap_ds_rules || { tc_flower_clear dev $SERVICES_PMAP ingress; services_pmap_ds_rules; }
+    me309create;me309create
+    [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev "$SERVICES_PMAP" ingress
+    services_pmap_ds_rules || { tc_flower_clear dev "$SERVICES_PMAP" ingress; services_pmap_ds_rules; }
 fi
 
 # 配置多播流量（如果存在Services PMAP和多播GEM端口）
 if [ -n "$SERVICES_PMAP" ] && [ -n "$MULTICAST_GEM" ] ; then
-	[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $MULTICAST_IFACE egress
-    multicast_iface_ds_rules || { tc_flower_clear dev $MULTICAST_IFACE egress; multicast_iface_ds_rules; }
+	[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $MULTICAST_IFACE egress; tc_flower_clear dev $MULTICAST_GEM ingress
+    multicast_iface_ds_rules; multicast_gem_ds_rules || { tc_flower_clear dev $MULTICAST_IFACE egress; tc_flower_clear dev $MULTICAST_GEM ingress; multicast_iface_ds_rules; multicast_gem_ds_rules; }
 fi
 
 
@@ -178,17 +187,17 @@ internet_pmap_us_rules() {
     if [ "$INTERNET_VLAN" -ne 0 ]; then
         # 对于Tag模式
         # 1. 将Internet VLAN修改为单播VLAN
-        tc_flower_add dev $INTERNET_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id $INTERNET_VLAN skip_sw action vlan modify id $UNICAST_VLAN protocol 802.1Q pass &&
+        tc_flower_add dev "$INTERNET_PMAP" egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id "$INTERNET_VLAN" skip_sw action vlan modify id "$UNICAST_VLAN" protocol 802.1Q pass &&
         # 2. 丢弃其他带VLAN标签的流量
-        tc_flower_add dev $INTERNET_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action drop &&
+        tc_flower_add dev "$INTERNET_PMAP" egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action drop &&
         # 3. 丢弃所有其他流量
-        tc_flower_add dev $INTERNET_PMAP egress handle 0x3 protocol all pref 3 flower skip_sw action drop
+        tc_flower_add dev "$INTERNET_PMAP" egress handle 0x3 protocol all pref 3 flower skip_sw action drop
     else
         # 对于Untag模式
         # 1. 丢弃带VLAN标签的流量
-        tc_flower_add dev $INTERNET_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action drop &&
+        tc_flower_add dev "$INTERNET_PMAP" egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action drop &&
         # 2. 为其他流量添加单播VLAN标签
-        tc_flower_add dev $INTERNET_PMAP egress handle 0x2 protocol all pref 2 flower skip_sw action vlan push id $UNICAST_VLAN priority 0 protocol 802.1Q pass
+        tc_flower_add dev "$INTERNET_PMAP" egress handle 0x2 protocol all pref 2 flower skip_sw action vlan push id "$UNICAST_VLAN" priority 0 protocol 802.1Q pass
     fi
 }
 
@@ -198,23 +207,23 @@ services_pmap_us_rules() {
     [ -z "$DEFAULT_SERVICES_VLAN" ] && DEFAULT_SERVICES_VLAN=$UNICAST_VLAN
 
     # 1. 将本地服务VLAN修改为服务VLAN
-    tc_flower_add dev $SERVICES_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id $SERVICES_VLAN skip_sw action vlan modify id $DEFAULT_SERVICES_VLAN protocol 802.1Q pass &&
+    tc_flower_add dev "$SERVICES_PMAP" egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id "$SERVICES_VLAN" skip_sw action vlan modify id "$DEFAULT_SERVICES_VLAN" protocol 802.1Q pass &&
     # 2. 丢弃其他带VLAN标签的流量
-    tc_flower_add dev $SERVICES_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action drop &&
+    tc_flower_add dev "$SERVICES_PMAP" egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action drop &&
     # 3. 丢弃所有其他流量
-    tc_flower_add dev $SERVICES_PMAP egress handle 0x3 protocol all pref 3 flower skip_sw action drop
+    tc_flower_add dev "$SERVICES_PMAP" egress handle 0x3 protocol all pref 3 flower skip_sw action drop
 }
 
 
 # 应用上行规则
 # 配置Internet流量
-[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $INTERNET_PMAP egress
-internet_pmap_us_rules || { tc_flower_clear dev $INTERNET_PMAP egress; internet_pmap_us_rules; }
+[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev "$INTERNET_PMAP" egress
+internet_pmap_us_rules || { tc_flower_clear dev "$INTERNET_PMAP" egress; internet_pmap_us_rules; }
 
 # 配置服务流量（如果存在Services PMAP）
 if [ -n "$SERVICES_PMAP" ]; then
-    [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $SERVICES_PMAP egress
-    services_pmap_us_rules || { tc_flower_clear dev $SERVICES_PMAP egress; services_pmap_us_rules; }
+    [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev "$SERVICES_PMAP" egress
+    services_pmap_us_rules || { tc_flower_clear dev "$SERVICES_PMAP" egress; services_pmap_us_rules; }
 fi
 
 # 清理单播接口的规则
