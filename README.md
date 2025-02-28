@@ -1,5 +1,5 @@
 # 8311 XGS-PON Bypass
-Scripts to fix VLANs on WAS-110/WAG-D20 for Bell (Compatible with ATT and probably others as well)
+8311社区固件负责处理vlan相关的脚本，相较于2.5g猫棒，新版的prx126方案的soc与linux集成度更高，改用tc处理
 
 ## 8311-detect-config.sh
 This is a helper script for fix-bell-vlans that will help detect the ISP configuration.
