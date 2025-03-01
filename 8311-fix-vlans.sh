@@ -24,7 +24,6 @@ MULTICAST_IFACE=eth0_0_2      # 多播流量接口
 CONFIG_FILE=${CONFIG_FILE:-"/tmp/8311-config.sh"}
 DETECT_CONFIG=${DETECT_CONFIG:-"/root/8311-detect-config.sh"}
 
-
 # 检查配置检测脚本是否存在
 if [ ! -x "$DETECT_CONFIG" ]; then
     echo "Required detection script '$DETECT_CONFIG' missing." 2>&1 | logger -t "8311 vlanfix" -p daemon.err
@@ -33,10 +32,10 @@ fi
 
 # 读取配置文件（如果存在）
 STATE_HASH=""                # 状态哈希值，用于检测配置是否变化
-FIX_ENABLED=              # VLAN修复功能开关
+FIX_ENABLED=                 # VLAN修复功能开关
 [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
 if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
-	exit 69               # 如果VLAN修复被禁用，退出脚本
+    exit 69                  # 如果VLAN修复被禁用，退出脚本
 fi
 
 # 获取当前系统状态的哈希值
@@ -70,20 +69,25 @@ if [ -z "$INTERNET_VLAN" ] || [ -z "$INTERNET_PMAP" ] || [ -z "$UNICAST_VLAN" ];
     echo "Required variables INTERNET_VLAN, INTERNET_PMAP, and UNICAST_VLAN are not properly set." 2>&1 | logger -t "8311 vlanfix" -p daemon.err
     exit 1
 fi
+
 ## 首先我们需要明确一个事情，就是eth0_0（unicast_iface）这个接口的egress和ingress方向和pmapper是反着的，这点极容易被混肴
 
+###############################################################################
 ### 下行流量处理（从OLT到用户）
+###############################################################################
+
 # 配置Internet PMAP的下行规则
 internet_pmap_ds_rules() {
     if [ "$INTERNET_VLAN" -ne 0 ]; then
         # Tag模式，修改VLAN ID
         tc_flower_add dev $UNICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw vlan_id "$UNICAST_VLAN" action vlan modify id "$INTERNET_VLAN" protocol 802.1Q pass
         tc_flower_add dev $UNICAST_IFACE egress handle 0x2 protocol 802.1ad pref 2 flower skip_sw vlan_id "$UNICAST_VLAN" action vlan modify id "$INTERNET_VLAN" protocol 802.1Q pass
-       # tc_flower_add dev "$INTERNET_PMAP" ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id "$INTERNET_VLAN" protocol 802.1Q pass
+        # tc_flower_add dev "$INTERNET_PMAP" ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id "$INTERNET_VLAN" protocol 802.1Q pass
     else
         # 对于不带标签的流量，移除VLAN标签
         tc_flower_add dev $UNICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw vlan_id "$UNICAST_VLAN" action vlan pop pass
-        tc_flower_add dev $UNICAST_IFACE egress handle 0x2 protocol 802.1ad pref 2 flower skip_sw vlan_id "$UNICAST_VLAN" action vlan pop pass # TODO: 对于802.1ad，不知道直接pop pass会不会有问题，双层tag会不会只untag一层？？
+        tc_flower_add dev $UNICAST_IFACE egress handle 0x2 protocol 802.1ad pref 2 flower skip_sw vlan_id "$UNICAST_VLAN" action vlan pop pass 
+        # TODO: 对于802.1ad，不知道直接pop pass会不会有问题，双层tag会不会只untag一层？？
     fi
 }
 
@@ -102,69 +106,76 @@ multicast_iface_ds_rules() {
 }
 
 # 配置多播GEM的下行规则
-#multicast_gem_ds_rules() {
-#    #修改VLANID与Services PMAP相同和优先级
-#    tc_flower_add dev "$MULTICAST_GEM" ingress handle 0x1 protocol all pref 1 flower skip_sw action vlan modify id "$SERVICES_VLAN" priority 5 protocol 802.1Q pass
-#}
+# multicast_gem_ds_rules() {
+#     # 修改VLANID与Services PMAP相同和优先级
+#     tc_flower_add dev "$MULTICAST_GEM" ingress handle 0x1 protocol all pref 1 flower skip_sw action vlan modify id "$SERVICES_VLAN" priority 5 protocol 802.1Q pass
+# }
+
 # 组播309规则创建
 me309create() {
-	me309=$($omci md | grep 309 | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | head -n 1 | sed s/[[:space:]]//g)
-	me309line=$($omci md | grep 309 | wc -l)
-	if [ -z "$me309" ] ||  [ "$me309line" != "2" ]; then
-		logger -t "[vlan]" "creating me309 ..."
-		igmpversion=3
-		me309=1
-		$omci mec 309 $me309 3 0 1 0 0 32
-		$omci meads 309 $me309 10 02
-		$omci meads 309 $me309 12 00 00 00 7d
-		$omci meads 309 $me309 13 00 00 00 64
-		$omci meads 309 $me309 15 01
-		$omci mec 310 $me309 0 $me309 64 0 1
-		$omci mec 311 $me309 0
-		sleep 5
-	else
-		logger -t "[vlan]" "me309 existed."
-		$omci meads 309 $me309 1 0$igmpversion
-	fi
+    me309=$($omci md | grep 309 | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | head -n 1 | sed s/[[:space:]]//g)
+    me309line=$($omci md | grep 309 | wc -l)
+    
+    if [ -z "$me309" ] ||  [ "$me309line" != "2" ]; then
+        logger -t "[vlan]" "creating me309 ..."
+        igmpversion=3
+        me309=1
+        $omci mec 309 $me309 3 0 1 0 0 32
+        $omci meads 309 $me309 10 02
+        $omci meads 309 $me309 12 00 00 00 7d
+        $omci meads 309 $me309 13 00 00 00 64
+        $omci meads 309 $me309 15 01
+        $omci mec 310 $me309 0 $me309 64 0 1
+        $omci mec 311 $me309 0
+        sleep 5
+    else
+        logger -t "[vlan]" "me309 existed."
+        $omci meads 309 $me309 1 0$igmpversion
+    fi
 }
-#组播规则创建，来自gpon猫棒的黑魔法
+
+# 组播规则创建，来自gpon猫棒的黑魔法
 mvlanset() {
     me309=1
-	if [ "$SERVICES_VLAN" -gt 4094 ] || [ "$(echo $SERVICES_VLAN | grep -c '^[1-9][0-9]*$')" = "0" ]; then
-		
-			logger -t "[vlan]" "services vlan $SERVICES_VLAN configuration error."
-		return
-	else
-		me309create
-	fi
-	a309=$(printf "%04x" $SERVICES_VLAN)
-	b309=$(echo $a309 | sed 's/../& /g')
-	match309="04 $b309"
-	flag309=$($omci meadg 309 $me309 16 2>&- | cut -f 3 -d '=')
-	if [ "$flag309" = "$match309" ]; then
-		logger -t "[vlan]" "services vlan rule match."
-	else
-		logger -t "[vlan]" "services vlan configuring."
-		$omci meads 309 $me309 16 $match309
-	fi
-	if [ -z "$MULTICAST_VLAN" ]; then
-		logger -t "[vlan]" "no multicast vlan configed."
-		return
-	else
-		if [ "$MULTICAST_VLAN" -gt 4094 ] || [ "$(echo $MULTICAST_VLAN | grep -c '^[1-9][0-9]*$')" = "0" ]; then
-			logger -t "[vlan]" "multicast vlan $MULTICAST_VLAN configuration error."
-			return
-		fi
-	fi
-	sa309=$(printf "%04x" $MULTICAST_VLAN)
-	sb309=$(echo $sa309 | sed 's/../& /g')
-	muti_gem_tp_instance=$($omci md | grep "Multicast GEM TP" | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | sed s/[[:space:]]//g)
-	if [ -n "$muti_gem_tp_instance" ]; then
-		gpnctp_ptr=$($omci meadg 281 $muti_gem_tp_instance 1 | sed -n 's/\(attr\_data\=\)/\1/p' | cut -f 3 -d '=' | cut -f 1 -d '(' | sed s/[[:space:]]//g)
-		muti_port=$($omci meadg 268 0x$gpnctp_ptr 1 | cut -f 3 -d '=')
-		logger -t "[vlan]" "got muticast gem tp, muticast port: $muti_port, configuring ..."
-		$omci meads 309 $me309 7 40 00 $muti_port $sb309 00 00 00 00 e0 00 01 00 ef ff ff ff 00 00 00 00 00 00
-	fi
+    if [ "$SERVICES_VLAN" -gt 4094 ] || [ "$(echo $SERVICES_VLAN | grep -c '^[1-9][0-9]*$')" = "0" ]; then
+        logger -t "[vlan]" "services vlan $SERVICES_VLAN configuration error."
+        return
+    else
+        me309create
+    fi
+    
+    a309=$(printf "%04x" $SERVICES_VLAN)
+    b309=$(echo $a309 | sed 's/../& /g')
+    match309="04 $b309"
+    flag309=$($omci meadg 309 $me309 16 2>&- | cut -f 3 -d '=')
+    
+    if [ "$flag309" = "$match309" ]; then
+        logger -t "[vlan]" "services vlan rule match."
+    else
+        logger -t "[vlan]" "services vlan configuring."
+        $omci meads 309 $me309 16 $match309
+    fi
+    
+    if [ -z "$MULTICAST_VLAN" ]; then
+        logger -t "[vlan]" "no multicast vlan configed."
+        return
+    else
+        if [ "$MULTICAST_VLAN" -gt 4094 ] || [ "$(echo $MULTICAST_VLAN | grep -c '^[1-9][0-9]*$')" = "0" ]; then
+            logger -t "[vlan]" "multicast vlan $MULTICAST_VLAN configuration error."
+            return
+        fi
+    fi
+    
+    sa309=$(printf "%04x" $MULTICAST_VLAN)
+    sb309=$(echo $sa309 | sed 's/../& /g')
+    muti_gem_tp_instance=$($omci md | grep "Multicast GEM TP" | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | sed s/[[:space:]]//g)
+    
+    if [ -n "$muti_gem_tp_instance" ]; then
+        gpnctp_ptr=$($omci meadg 281 $muti_gem_tp_instance 1 | sed -n 's/\(attr\_data\=\)/\1/p' | cut -f 3 -d '=' | cut -f 1 -d '(' | sed s/[[:space:]]//g)
+        muti_port=$($omci meadg 268 0x$gpnctp_ptr 1 | cut -f 3 -d '=')
+        logger -t "[vlan]" "got muticast gem tp, muticast port: $muti_port, configuring ..."
+        $omci meads 309 $me309 7 40 00 $muti_port $sb309 00 00 00 00 e0 00 01 00 ef ff ff ff 00 00 00 00 00 00
+    fi
 }
 
 ## 应用下行规则
@@ -174,19 +185,26 @@ internet_pmap_ds_rules || { tc_flower_clear dev "$INTERNET_PMAP" ingress; intern
 
 # 配置服务流量（如果存在Services PMAP）
 if [ -n "$SERVICES_PMAP" ]; then
-    me309create;me309create
+    me309create; me309create
     [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev "$SERVICES_PMAP" ingress
     services_pmap_ds_rules || { tc_flower_clear dev "$SERVICES_PMAP" ingress; services_pmap_ds_rules; }
 fi
 
 # 配置多播流量（如果存在Services PMAP和多播GEM端口）
-if [ -n "$SERVICES_PMAP" ] && [ -n "$MULTICAST_GEM" ] ; then
-	[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $MULTICAST_IFACE egress; tc_flower_clear dev $MULTICAST_GEM ingress
-    multicast_iface_ds_rules; multicast_gem_ds_rules || { tc_flower_clear dev $MULTICAST_IFACE egress; tc_flower_clear dev $MULTICAST_GEM ingress; multicast_iface_ds_rules; multicast_gem_ds_rules; }
+if [ -n "$SERVICES_PMAP" ] && [ -n "$MULTICAST_GEM" ]; then
+    [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $MULTICAST_IFACE egress; tc_flower_clear dev $MULTICAST_GEM ingress
+    multicast_iface_ds_rules; multicast_gem_ds_rules || { 
+        tc_flower_clear dev $MULTICAST_IFACE egress
+        tc_flower_clear dev $MULTICAST_GEM ingress
+        multicast_iface_ds_rules
+        multicast_gem_ds_rules
+    }
 fi
 
-
+###############################################################################
 ### 上行流量处理（从用户到OLT）
+###############################################################################
+
 # 配置Internet PMAP的上行规则
 internet_pmap_us_rules() {
     if [ "$INTERNET_VLAN" -ne 0 ]; then
@@ -197,8 +215,8 @@ internet_pmap_us_rules() {
         # 对于Untag模式
         # 添加单播VLAN标签
         tc_flower_add dev $UNICAST_IFACE ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action pass
-        tc_flower_add dev $UNICAST_IFACE ingress handle 0x2 protocol all pref 2 flower skip_sw action vlan push id $UNICAST_VLAN priority 0 protocol 802.1Q pass
-        #tc_flower_add dev $UNICAST_IFACE ingress handle 0x1 protocol all pref 1 flower skip_sw action vlan push id "$UNICAST_VLAN" priority 0 protocol 802.1Q pass
+        tc_flower_add dev $UNICAST_IFACE ingress handle 0x3 protocol all pref 3 flower skip_sw action vlan push id $UNICAST_VLAN priority 0 protocol 802.1Q pass
+        # tc_flower_add dev $UNICAST_IFACE ingress handle 0x1 protocol all pref 1 flower skip_sw action vlan push id "$UNICAST_VLAN" priority 0 protocol 802.1Q pass
     fi
 }
 
@@ -208,9 +226,9 @@ services_pmap_us_rules() {
     [ -z "$DEFAULT_SERVICES_VLAN" ] && DEFAULT_SERVICES_VLAN=$UNICAST_VLAN
 
     # 1. 将本地服务VLAN修改为服务VLAN
-    tc_flower_add dev $UNICAST_IFACE ingress handle 0x1 protocol 802.1Q pref 1 flower vlan_id "$SERVICES_VLAN" skip_sw action vlan modify id "$DEFAULT_SERVICES_VLAN" protocol 802.1Q pass #TODO：均为0x1会不会存在冲突？
+    tc_flower_add dev $UNICAST_IFACE ingress handle 0x2 protocol 802.1Q pref 2 flower vlan_id "$SERVICES_VLAN" skip_sw action vlan modify id "$DEFAULT_SERVICES_VLAN" protocol 802.1Q pass 
+    # TODO：均为0x1会不会存在冲突？
 }
-
 
 # 应用上行规则
 # 配置Internet流量
@@ -224,5 +242,5 @@ if [ -n "$SERVICES_PMAP" ]; then
 fi
 
 # 清理单播接口的规则
-#tc_flower_clear dev $UNICAST_IFACE egress
-#tc_flower_clear dev $UNICAST_IFACE ingress
+# tc_flower_clear dev $UNICAST_IFACE egress
+# tc_flower_clear dev $UNICAST_IFACE ingress
