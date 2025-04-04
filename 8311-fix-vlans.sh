@@ -50,7 +50,7 @@ acquire_lock() {
     if [ -e "$LOCK_FILE" ]; then
         pid=$(cat "$LOCK_FILE" 2>/dev/null)
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            logger -t "[vlan]" "脚本已在运行，进程ID: $pid"
+            logger -t "8311-fixvlan" -p daemon.info "脚本已在运行，进程ID: $pid"
             return 1
         fi
     fi
@@ -96,13 +96,13 @@ validate_vlan_id() {
     
     # 检查是否是合法的数字
     if ! echo "$vlan_id" | grep -qE '^[1-9][0-9]*$'; then
-        logger -t "[vlan]" "无效的VLAN ID格式: $vlan_id - 必须是正整数"
+        logger -t "8311-fixvlan" -p daemon.info "无效的VLAN ID格式: $vlan_id - 必须是正整数"
         return 1
     fi
     
     # 检查范围是否在1-4094之间
     if [ "$vlan_id" -lt 1 ] || [ "$vlan_id" -gt 4094 ]; then
-        logger -t "[vlan]" "VLAN ID超出范围: $vlan_id - 必须在1-4094之间"
+        logger -t "8311-fixvlan" -p daemon.info "VLAN ID超出范围: $vlan_id - 必须在1-4094之间"
         return 1
     fi
     
@@ -171,7 +171,7 @@ me47pptpunibridge() {
     me47_instance_number=`$omci md | grep "Bridge port config data" | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | sed s/[[:space:]]//g`
     spanning_tree=`$omci meadg 45 1 1 | sed -n 's/\(attr\_data\=\)/\1/p' | cut -f 3 -d '=' | sed s/[[:space:]]//g`
     if [ -n "$vlandebug" ]; then
-        logger -t "[vlan]" "me47_instance_number: `echo $me47_instance_number`"
+        logger -t "8311-fixvlan" -p daemon.info "me47_instance_number: `echo $me47_instance_number`"
     fi
     for i in `echo $me47_instance_number`
     do
@@ -179,7 +179,7 @@ me47pptpunibridge() {
         me47_tpptr=`$omci meadg 47 $i 4 | sed -n 's/\(attr\_data\=\)/\1/p' | cut -f 3 -d '=' | sed s/[[:space:]]//g`
         if [ "$me47_tptype" == "01" ] && [ "$me47_tpptr" == "0101" ]; then
             if [ -n "$vlandebug" ]; then
-                logger -t "[vlan]" "pptp uni bridge port: $i existed."
+                logger -t "8311-fixvlan" -p daemon.info "pptp uni bridge port: $i existed."
             fi
             pptp_uni_bridge=$i
             $omci meads 47 $i 3 1
@@ -194,7 +194,7 @@ me47pptpunibridge() {
     fi
     bridge_instance=`$omci md | grep "Bridge config data" | sed -n 's/\(0x\)/\1/p' | cut -f 3 -d '|' | cut -f 1 -d '(' | tail -n 1 | sed s/[[:space:]]//g`
     if [ -n "$vlandebug" ]; then
-        logger -t "[vlan]" "no pptp uni bridge port, creating it and instance is fixed 1."
+        logger -t "8311-fixvlan" -p daemon.info "no pptp uni bridge port, creating it and instance is fixed 1."
     fi
     $omci mec 47 1 $bridge_instance 1 1 257 0 1 ${spanning_tree:1:2} 1 1
     pptp_uni_bridge=1
@@ -212,7 +212,7 @@ me171create() {
             if [ "$Associated_ME_ptr" = "0101" ]; then
                 me171=$i
                 if [ -n "$vlandebug" ]; then
-                    logger -t "[vlan]" "me171 value: $me171"
+                    logger -t "8311-fixvlan" -p daemon.info "me171 value: $me171"
                 fi
                 break
             fi
@@ -221,7 +221,7 @@ me171create() {
     me47_instance=$pptp_uni_bridge
     case $createflag in
         0)  if [ -z "$me171" ] && [ -n "$vlandebug" ]; then
-                logger -t "[vlan]" "me171 value should not be null."
+                logger -t "8311-fixvlan" -p daemon.info "me171 value should not be null."
             fi
         ;;
         1)  if [ -z "$me171" ]; then
@@ -245,12 +245,12 @@ me171create() {
                 mecounter
                 
                 if [ -n "$vlandebug" ]; then
-                    logger -t "[vlan]" "me171 value: $me47_instance, created with direct omci commands"
+                    logger -t "8311-fixvlan" -p daemon.info "me171 value: $me47_instance, created with direct omci commands"
                 fi
             fi
         ;;
         *)  if [ -n "$vlandebug" ]; then
-                logger -t "[vlan]" "create me171 value error."
+                logger -t "8311-fixvlan" -p daemon.info "create me171 value error."
             fi
         ;;
     esac
@@ -267,12 +267,12 @@ me171rulecheck() {
     if [ $me171_rule_line -ge 1 ] && [ -n "$vlandebug" ]; then
         for i in `seq 1 $me171_rule_line`
         do
-            logger -t "[vlan]" "me171 rule: `cat /tmp/me171_rule | tail -n $i | head -n 1`"
+            logger -t "8311-fixvlan" -p daemon.info "me171 rule: `cat /tmp/me171_rule | tail -n $i | head -n 1`"
         done
     fi
     if [ "$me171_singtagget" != "$me171_singtag" ] || [ "$me171_doubletagget" != "$me171_doubletag" ]; then
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "defualt rule not match, creating ..."
+            logger -t "8311-fixvlan" -p daemon.info "defualt rule not match, creating ..."
         fi
         $omci meads 171 $me171 6 f8 00 00 00 e8 00 00 00 00 0f 00 00 00 0f 00 00
         $omci meads 171 $me171 6 e8 00 00 00 e8 00 00 00 00 0f 00 00 00 0f 00 00
@@ -294,7 +294,7 @@ mecounter() {
     current_4=`printf "%x" $current_3`
     $omci meads 2 0 1 $current_4
     if [ -n "$vlandebug" ]; then
-        logger -t "[vlan]" "meconunter: $current_4 ."
+        logger -t "8311-fixvlan" -p daemon.info "meconunter: $current_4 ."
     fi
 }
 
@@ -304,7 +304,7 @@ me309create() {
     me309line=`$omci md | grep 309 | wc -l`
     if [ -z "$me309" ] || [ "$me309line" != "2" ] || [ "$force_me309" = "1" ]; then
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "creating me309 ..."
+            logger -t "8311-fixvlan" -p daemon.info "creating me309 ..."
         fi
         me309=$pptp_uni_bridge
         $omci mec 309 $me309 $igmpversion 0 1 0 0 32
@@ -317,7 +317,7 @@ me309create() {
         sleep 5
     else
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "me309 rule existed."
+            logger -t "8311-fixvlan" -p daemon.info "me309 rule existed."
         fi
         $omci meads 309 $me309 1 0$igmpversion
     fi
@@ -334,13 +334,13 @@ meruleset() {
         sed -i '/.*olt\ type*/c\olt\ type:'$olt_type'' /tmp/collect
     fi
     if [ -n "$vlandebug" ]; then
-        logger -t "[vlan]" "olt type:$olt_type"
+        logger -t "8311-fixvlan" -p daemon.info "olt type:$olt_type"
     fi
     
     # 如果启用了强制设置ME规则选项
     if [ "$forcemerule" = "1" ]; then
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "强制设置ME规则..."
+            logger -t "8311-fixvlan" -p daemon.info "强制设置ME规则..."
         fi
         me47pptpunibridge
         me171create 1
@@ -374,7 +374,7 @@ tptypealcl() {
         me47_tpptr=`$omci meadg 47 $i 4 | sed -n 's/\(attr\_data\=\)/\1/p' | cut -f 3 -d '=' | sed s/[[:space:]]//g`
         if [ "$me47_tptype" == "01" ] && [ "$me47_tpptr" == "0101" ]; then
             if [ -n "$vlandebug" ]; then
-                logger -t "[vlan]" "pptp uni bridge port: $i existed."
+                logger -t "8311-fixvlan" -p daemon.info "pptp uni bridge port: $i existed."
             fi
             $omci meads 47 $i 3 1
             $omci meads 47 $i 4 01 01
@@ -399,7 +399,7 @@ tptypealcl() {
 uvlanset() {
     if [ -z "$uvlan" ]; then
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "no uvlan configed."
+            logger -t "8311-fixvlan" -p daemon.info "no uvlan configed."
         fi
         $omci meads 171 $me171 6 f8 00 00 00 f8 00 00 00 c0 0f 00 00 00 0f 00 00
         return
@@ -407,13 +407,13 @@ uvlanset() {
     
     # 验证单播VLAN ID
     if [ "$uvlan" != "u" ] && ! validate_vlan_id "$uvlan"; then
-        logger -t "[vlan]" "uvlan $uvlan 配置错误，使用默认配置"
+        logger -t "8311-fixvlan" -p daemon.info "uvlan $uvlan 配置错误，使用默认配置"
         $omci meads 171 $me171 6 f8 00 00 00 f8 00 00 00 c0 0f 00 00 00 0f 00 00
         return
     fi
     
     if [ "$uvlan" == "u" ]; then
-        logger -t "[vlan]" "untagged configed."
+        logger -t "8311-fixvlan" -p daemon.info "untagged configed."
         match171="f8 00 00 00 f8 00 00 00 00 0f 00 00 00 0f 00 00"
     else
         tmp171=`expr $uvlan \* 8 + 4`
@@ -425,14 +425,14 @@ uvlanset() {
     flag171=`$omci meg 171 $me171 | grep "$word_171"`
     if [ -n "$flag171" ] && [ "$forceuvlan" != "1" ]; then
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "uvlan rule match."
+            logger -t "8311-fixvlan" -p daemon.info "uvlan rule match."
         fi
     else
         if [ -n "$vlandebug" ]; then
             if [ "$forceuvlan" = "1" ]; then
-                logger -t "[vlan]" "强制设置uvlan ..."
+                logger -t "8311-fixvlan" -p daemon.info "强制设置uvlan ..."
             else
-                logger -t "[vlan]" "uvlan configuring ..."
+                logger -t "8311-fixvlan" -p daemon.info "uvlan configuring ..."
             fi
         fi
         $omci meads 171 $me171 6 $match171
@@ -443,14 +443,14 @@ uvlanset() {
 mvlanset() {
     if [ -z "$mvlan" ]; then
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "no mvlan configed."
+            logger -t "8311-fixvlan" -p daemon.info "no mvlan configed."
         fi
         return
     fi
     
     # 验证多播VLAN ID
     if ! validate_vlan_id "$mvlan"; then
-        logger -t "[vlan]" "mvlan $mvlan 配置错误"
+        logger -t "8311-fixvlan" -p daemon.info "mvlan $mvlan 配置错误"
         return
     fi
     
@@ -462,11 +462,11 @@ mvlanset() {
     flag309=`$omci meadg 309 $me309 16 2>&- | cut -f 3 -d '='`
     if [ "$flag309" == "$match309" ]; then
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "mvlan rule match."
+            logger -t "8311-fixvlan" -p daemon.info "mvlan rule match."
         fi
     else
         if [ -n "$vlandebug" ]; then
-            logger -t "[vlan]" "mvlan configuring."
+            logger -t "8311-fixvlan" -p daemon.info "mvlan configuring."
         fi
         $omci meads 309 $me309 16 $match309
     fi
@@ -474,7 +474,7 @@ mvlanset() {
     # 验证多播VLAN转换ID
     if [ -n "$mtvlan" ]; then
         if ! validate_vlan_id "$mtvlan"; then
-            logger -t "[vlan]" "mtvlan $mtvlan 配置错误"
+            logger -t "8311-fixvlan" -p daemon.info "mtvlan $mtvlan 配置错误"
             return
         fi
         
@@ -485,12 +485,12 @@ mvlanset() {
             gpnctp_ptr=`$omci meadg 281 $muti_gem_tp_instance 1 | sed -n 's/\(attr\_data\=\)/\1/p' | cut -f 3 -d '=' | cut -f 1 -d '(' | sed s/[[:space:]]//g`
             muti_port=`$omci meadg 268 0x$gpnctp_ptr 1 | cut -f 3 -d '='`
             if [ -n "$vlandebug" ]; then
-                logger -t "[vlan]" "got muticast gem tp, muticast port: $muti_port, configuring ..."
+                logger -t "8311-fixvlan" -p daemon.info "got muticast gem tp, muticast port: $muti_port, configuring ..."
             fi
             $omci meads 309 $me309 7 40 00 $muti_port $sb309 00 00 00 00 e0 00 01 00 ef ff ff ff 00 00 00 00 00 00
         fi
     elif [ -n "$vlandebug" ]; then
-        logger -t "[vlan]" "no mtvlan configed."
+        logger -t "8311-fixvlan" -p daemon.info "no mtvlan configed."
     fi
 }
 
@@ -518,30 +518,30 @@ vlantransset() {
         
         # 验证VLAN转换规则
         if [ -z "$vlana" ] || [ -z "$vlanb" ]; then
-            logger -t "[vlan]" "vlantrans$i 格式错误：源或目标VLAN为空"
+            logger -t "8311-fixvlan" -p daemon.info "vlantrans$i 格式错误：源或目标VLAN为空"
             continue
         fi
         
         # 验证源VLAN ID
         if ! validate_vlan_id "$vlana"; then
-            logger -t "[vlan]" "vlantrans$i 源VLAN ID无效: $vlana"
+            logger -t "8311-fixvlan" -p daemon.info "vlantrans$i 源VLAN ID无效: $vlana"
             continue
         fi
         
         # 验证目标VLAN ID（可以是"u"或有效的VLAN ID）
         if [ "$vlanb" != "u" ] && ! validate_vlan_id "$vlanb"; then
-            logger -t "[vlan]" "vlantrans$i 目标VLAN ID无效: $vlanb"
+            logger -t "8311-fixvlan" -p daemon.info "vlantrans$i 目标VLAN ID无效: $vlanb"
             continue
         fi
         
         # 验证优先级
         if [ -n "$prioritya" ] && ([ "$prioritya" -lt 0 ] || [ "$prioritya" -gt 7 ]); then
-            logger -t "[vlan]" "vlantrans$i 源优先级无效: $prioritya (应为0-7)"
+            logger -t "8311-fixvlan" -p daemon.info "vlantrans$i 源优先级无效: $prioritya (应为0-7)"
             continue
         fi
         
         if [ -n "$priorityb" ] && ([ "$priorityb" -lt 0 ] || [ "$priorityb" -gt 7 ]); then
-            logger -t "[vlan]" "vlantrans$i 目标优先级无效: $priorityb (应为0-7)"
+            logger -t "8311-fixvlan" -p daemon.info "vlantrans$i 目标优先级无效: $priorityb (应为0-7)"
             continue
         fi
         
@@ -569,11 +569,11 @@ vlantransset() {
         wordget=`$omci meg 171 $me171 | grep "$word_c"`
         if [ -n "$wordget" ]; then
             if [ -n "$vlandebug" ]; then
-                logger -t "[vlan]" "vlantrans$i $vlana:$vlanb rule match."
+                logger -t "8311-fixvlan" -p daemon.info "vlantrans$i $vlana:$vlanb rule match."
             fi
         else
             if [ -n "$vlandebug" ]; then
-                logger -t "[vlan]" "vlantrans$i $vlana:$vlanb configuring ..."
+                logger -t "8311-fixvlan" -p daemon.info "vlantrans$i $vlana:$vlanb configuring ..."
             fi
             $omci meads 171 $me171 6 $wordset
         fi
@@ -586,7 +586,7 @@ vlantransset() {
 
 # 获取锁，防止多个实例同时运行
 if ! acquire_lock; then
-    logger -t "[vlan]" "另一个脚本实例正在运行，退出"
+    logger -t "8311-fixvlan" -p daemon.info "另一个脚本实例正在运行，退出"
     exit 2
 fi
 
@@ -647,12 +647,12 @@ forcemerule=${forcemerule:-0}
 
 # 验证ONU状态，如果不是O5状态则退出
 if ! check_onu_state; then
-    logger -t "[vlan]" "Exiting: ONU not in O5 state"
+    logger -t "8311-fixvlan" -p daemon.info "Exiting: ONU not in O5 state"
     exit 0
 fi
 
 # 初始化并配置VLAN规则
-logger -t "[vlan]" "Starting VLAN configuration..."
+logger -t "8311-fixvlan" -p daemon.info "Starting VLAN configuration..."
 
 # 重置参数
 resetparameter
@@ -664,5 +664,5 @@ uvlanset
 mvlanset
 vlantransset
 
-logger -t "[vlan]" "VLAN configuration completed"
+logger -t "8311-fixvlan" -p daemon.info "VLAN configuration completed"
 exit 0

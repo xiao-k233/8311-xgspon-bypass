@@ -108,11 +108,11 @@ write_config() {
 # 日志记录函数
 log() {
     if [ -z "$LOG_FILE" ]; then
-        tee -a /dev/console | logger -t "8311" -p daemon.info
+        tee -a /dev/console | logger -t "8311-dectvlan" -p daemon.info
     elif [ "$1" = "-create" ]; then
-        tee -a /dev/console | logger -t "8311" -p daemon.info
+        tee -a /dev/console | logger -t "8311-dectvlan" -p daemon.info
     else
-        tee -a /dev/console | logger -t "8311" -p daemon.info
+        tee -a /dev/console | logger -t "8311-dectvlan" -p daemon.info
     fi
 }
 
