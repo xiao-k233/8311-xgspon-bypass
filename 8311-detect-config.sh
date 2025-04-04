@@ -70,7 +70,7 @@ disable_config() {
     echo "# Enable fix_vlans script?" > "$CONFIG_FILE"
     echo "FIX_ENABLED=0" >> "$CONFIG_FILE"
 
-    echo "Config file written to '$CONFIG_FILE'" | logger -t "8311 detect vlan" -p daemon.info
+    echo "Config file written to '$CONFIG_FILE'" | logger -t "8311-dectvlan" -p daemon.info
 }
 
 # 将检测到的配置写入配置文件
@@ -102,7 +102,7 @@ write_config() {
     echo "# State Hash" >> "$CONFIG_FILE"
     echo "STATE_HASH=$STATE_HASH" >> "$CONFIG_FILE"
 
-    echo "Config file written to '$CONFIG_FILE'" | logger -t "8311 detect vlan" -p daemon.info
+    echo "Config file written to '$CONFIG_FILE'" | logger -t "8311-dectvlan" -p daemon.info
 }
 
 # 日志记录函数
