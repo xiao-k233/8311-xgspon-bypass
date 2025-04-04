@@ -18,7 +18,6 @@ CONFIG_FILE="/tmp/8311-config.sh"
 LOCK_FILE="/var/lock/8311-fix-vlans.lock"
 
 # 导入VLAN库函数
-. /root/8311-vlans-lib.sh
 
 # OMCI相关命令
 uci="/sbin/uci"
