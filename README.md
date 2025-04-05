@@ -1,9 +1,5 @@
 # 8311 XGS-PON Bypass
-8311社区固件负责处理vlan相关的脚本，相较于2.5g猫棒，新版的prx126方案的soc与linux集成度更高，改用tc处理
-目前fork有如下区别
- - 换用在UNICAST_IFACE上处理，更适合中国运营商瞎几把改的体制
- - 更多更详细注释，便于社区贡献
- - 需要在hook脚本进行手动声明上网VLAN，因为我不会写luci XD
+该分支移植了来自阿瑟Lantiq Falcon Pon Stick的vlanexec.sh脚本，通过操控extvlan（me171）来实现vlan转换，更具有普适性，更低学习成本
 ## 8311-detect-config.sh
 This is a helper script for fix-bell-vlans that will help detect the ISP configuration.
 ```
