@@ -8,37 +8,18 @@
 # 脚本全局配置
 # =====================================================
 
-# 配置检测脚本的路径
-DETECT_CONFIG="/root/8311-detect-config.sh"
-
-# 配置文件路径，如果不存在会自动生成
-CONFIG_FILE="/tmp/8311-config.sh"
 
 # 添加锁文件，用于并发控制
 LOCK_FILE="/var/lock/8311-fix-vlans.lock"
 
-# 导入VLAN库函数
-
 # OMCI相关命令
-uci="/sbin/uci"
 omci="/usr/bin/omci_pipe.sh"
 
 # 全局变量
 initflag=0
 totalizerflag=0
-collectflag=0
 stateflag=0
-logflag=0
 vlandebug=1
-
-# 单播和多播接口定义
-UNICAST_IFACE=eth0_0
-MULTICAST_IFACE=eth0_0_2
-
-# 设置配置文件的默认路径
-CONFIG_FILE=${CONFIG_FILE:-"/tmp/8311-config.sh"}
-DETECT_CONFIG=${DETECT_CONFIG:-"/root/8311-detect-config.sh"}
-
 # =====================================================
 # 并发控制函数
 # =====================================================
@@ -592,49 +573,25 @@ fi
 # 退出时释放锁
 trap release_lock EXIT INT TERM
 
-# 检查配置检测脚本是否存在
-if [ ! -x "$DETECT_CONFIG" ]; then
-    echo "Required detection script '$DETECT_CONFIG' missing." 2>&1 | logger -t "8311 vlanfix" -p daemon.err
-    exit 1
-fi
 
-# 读取配置文件（如果存在）
-STATE_HASH=""                # 状态哈希值，用于检测配置是否变化
-FIX_ENABLED=                 # VLAN修复功能开关
-[ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
-if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
-    exit 69                  # 如果VLAN修复被禁用，退出脚本
-fi
+# ========================================
+# 干掉dect，直接读取vlan
+# ========================================
 
-# 获取当前系统状态的哈希值
-NEW_STATE_HASH=`"$DETECT_CONFIG" -H`
-
-# 检查是否需要重新生成配置
-CONFIG_RESET=0
-if [ ! -f "$CONFIG_FILE" ] || [ "$NEW_STATE_HASH" != "$STATE_HASH" ]; then
-    echo "Config file '$CONFIG_FILE' does not exist or state changed, detecting configuration..."
-
-    # 运行检测脚本生成新的配置
-    "$DETECT_CONFIG" -c "$CONFIG_FILE" 2>&1 | logger -t "8311 vlanfix" -p daemon.err
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Error: Unable to detect configuration." 2>&1 | logger -t "8311 vlanfix" -p daemon.err
-        exit 1
-    fi
-
-    CONFIG_RESET=1    # 标记配置已重置
-fi
-
-# 加载配置文件
-. "$CONFIG_FILE"
-
-# 再次检查VLAN修复是否被禁用
-if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
-    exit 69
-fi
+uvlan=$(fw_printenv -n 8311_uvlan 2>/dev/null)
+mvlansource=$(fw_printenv -n 8311_mvlansource 2>/dev/null)
+multicast_vlan=$(fw_printenv -n 8311_multicast_vlan 2>/dev/null)
+vlan_trans_rules=$(fw_printenv -n 8311_vlan_trans_rules 2>/dev/null)
+igmp_version=$(fw_printenv -n 8311_igmp_version 2>/dev/null || echo "3")
+vlandebug=$(fw_printenv -n 8311_vlandebug 2>/dev/null || echo "1")
+forceuvlan=$(fw_printenv -n 8311_forceuvlan 2>/dev/null || echo "0")
+forcemerule=$(fw_printenv -n 8311_forcemerule 2>/dev/null || echo "0")
+force_me309=$(fw_printenv -n 8311_force_me309 2>/dev/null || echo "0")
 
 # 将配置变量映射到vlanexec.sh使用的变量名
 uvlan=${uvlan:-}
-mvlan=${mvlansource:-}
+mvlan=${multicast_vlan:-}
+mtvlan=${mvlansource:-}
 tvlan=${vlan_trans_rules:-}
 igmpversion=${igmp_version:-3}
 
