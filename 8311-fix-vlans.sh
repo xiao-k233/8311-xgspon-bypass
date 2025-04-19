@@ -16,9 +16,7 @@ LOCK_FILE="/var/lock/8311-fix-vlans.lock"
 omci="/usr/bin/omci_pipe.sh"
 omci_simulate="/usr/bin/omci_simulate"
 # 全局变量
-initflag=0
-totalizerflag=0
-stateflag=0
+
 vlandebug=1
 
 init_flag=0
@@ -26,9 +24,7 @@ totalizer_flag=0
 collect_flag=0
 state_flag=0
 log_flag=0
-reboot_delay_interval=0
 
-reboots_count=$(cat /tmp/reboots_count 2>&-)
 vid_pattern='4096|409[0-4]|(40[0-8]|[1-3][[:digit:]][[:digit:]]|[1-9][[:digit:]]|[1-9])[[:digit:]]|[0-9]'
 
 # =====================================================
@@ -345,7 +341,7 @@ set_us_vlan() {
 			00 00 00 0f 00 00
 		return
 
-	elif [ "$(echo "$us_vlan_id" | grep -c "$vid")" -eq 0 ]; then
+	elif [ "$(echo "$us_vlan_id" | egrep -c "$vid")" -eq 0 ]; then
 		if [ -n "$vlan_svc_log" ]; then
 			logger -t "[vlan]" "There was an errror parsing us_vlan_id: $us_vlan_id."
 		fi
@@ -411,7 +407,7 @@ set_mc_vlans() {
 		fi
 		return
 
-	elif [ "$(echo "$ds_mc_tci" | grep -c "$tci")" -eq 0 ]; then
+	elif [ "$(echo "$ds_mc_tci" | egrep -c "$tci")" -eq 0 ]; then
 		if [ -n "$vlan_svc_log" ]; then
 			logger -t "[vlan]" "Error parsing ds_mc_tci: $ds_mc_tci."
 		fi
@@ -456,7 +452,7 @@ set_mc_vlans() {
 			logger -t "[vlan]" "No us_mc_vid is configured."
 		fi
 		return
-	elif [ "$(echo "$us_mc_vid" | grep -c "$vid")" -eq 0 ]; then
+	elif [ "$(echo "$us_mc_vid" | egrep -c "$vid")" -eq 0 ]; then
 		if [ -n "$vlan_svc_log" ]; then
 			logger -t "[vlan]" "Error configuring us_mc_vid: $us_mc_vid."
 		fi
@@ -531,7 +527,7 @@ check_vlan_translations() {
 		fi
 		return
 
-	elif [ "$(echo "$vlan_tag_ops" | grep -c "$pattern")" -eq 0 ]; then
+	elif [ "$(echo "$vlan_tag_ops" | egrep -c "$pattern")" -eq 0 ]; then
 		if [ -n "$vlan_svc_log" ]; then
 			logger -t "[vlan]" "Error parsing vlan_tag_ops: \"$vlan_tag_ops\"."
 		fi
@@ -609,7 +605,7 @@ set_vlan_translations() {
 		fi
 		return
 
-	elif [ "$(echo "$vlan_tag_ops" | grep -c "$pattern")" -eq 0 ]; then
+	elif [ "$(echo "$vlan_tag_ops" | egrep -c "$pattern")" -eq 0 ]; then
 		if [ -n "$vlan_svc_log" ]; then
 			logger -t "[vlan]" "Error parsing vlan_tag_ops: $vlan_tag_ops."
 		fi
@@ -1081,10 +1077,6 @@ main() {
 				collect
 				collect_flag=$((collect_flag + 1))
 			fi
-
-			reset_log_flag
-			reset_reboot_delay
-			reset_reboot_attempt
 			get_mib_data_sync
 
 			check_vlan_translations
