@@ -60,7 +60,7 @@ release_lock() {
 # 检查ONU状态是否为O5（正常运行状态）
 check_onu_state() {
     # 使用与8311.lua相同的方式获取PLOAM状态
-    ploamstate=$(pon psg | grep -o "current=[0-9]\+" | cut -d= -f2)
+    ploamstate=$(pon psg | sed -n 's/.*current=\([0-9]\+\).*/\1/p')
     
     # 检查是否为O5状态(50)
     # [50]	= "O5, Operation state",
