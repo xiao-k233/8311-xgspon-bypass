@@ -60,11 +60,11 @@ release_lock() {
 # 检查ONU状态是否为O5（正常运行状态）
 check_onu_state() {
     # 使用与8311.lua相同的方式获取PLOAM状态
-    ploamstate=$(pon psg | sed -n 's/.*current=\([0-9]\+\).*/\1/p')
+    ploamstate=$(pon psg | cut -b21)
     
     # 检查是否为O5状态(50)
     # [50]	= "O5, Operation state",
-    if [ "$ploamstate" != "50" ]; then
+    if [ "$ploamstate" != "5" ]; then
         return 1
     fi
     return 0
@@ -1073,6 +1073,11 @@ check_me_171() {
 }
 
 main() {
+			if ! check_onu_state; then
+    			logger -t "8311-fixvlan" -p daemon.info "Exiting: ONU not in O5 state"
+    			exit 0
+			fi
+
 			if [ $collect_flag -lt 2 ]; then
 				collect
 				collect_flag=$((collect_flag + 1))
