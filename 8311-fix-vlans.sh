@@ -1,57 +1,11 @@
 #!/bin/sh
-# shellcheck source=/dev/null
-# shellcheck disable=SC3001
-# VLAN修复脚本
-# 主要功能：根据检测到的配置，使用omci配置VLAN和组播规则，从vlanexec.sh移植
-
-# =====================================================
-# 脚本全局配置
-# =====================================================
-
-
-# 添加锁文件，用于并发控制
-LOCK_FILE="/var/lock/8311-fix-vlans.lock"
-
+_lib_8311 2>/dev/null || . /lib/8311.sh
 # OMCI相关命令
 omci="/usr/bin/omci_pipe.sh"
 omci_simulate="/usr/bin/omci_simulate"
-# 全局变量
 
-vlandebug=1
-
-init_flag=0
-totalizer_flag=0
-collect_flag=0
-state_flag=0
-log_flag=0
 
 vid_pattern='4096|409[0-4]|(40[0-8]|[1-3][[:digit:]][[:digit:]]|[1-9][[:digit:]]|[1-9])[[:digit:]]|[0-9]'
-
-# =====================================================
-# 并发控制函数
-# =====================================================
-
-# 获取锁，防止多个实例同时运行
-acquire_lock() {
-    # 创建锁文件，如果创建失败会返回非零值
-    if [ -e "$LOCK_FILE" ]; then
-        pid=$(cat "$LOCK_FILE" 2>/dev/null)
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            logger -t "8311-fixvlan" -p daemon.info "脚本已在运行，进程ID: $pid"
-            return 1
-        fi
-    fi
-    
-    echo $$ > "$LOCK_FILE"
-    return 0
-}
-
-# 释放锁
-release_lock() {
-    if [ -e "$LOCK_FILE" ]; then
-        rm -f "$LOCK_FILE"
-    fi
-}
 
 # =====================================================
 # 工具函数
@@ -71,58 +25,6 @@ check_onu_state() {
 }
 
 
-
-
-reset_log_flag() {
-	log_flag=0
-}
-
-rest() {
-	local time
-
-	if [ $state_flag -lt 20 ]; then
-		time=5
-	else
-		time=15
-	fi
-	sleep $time
-}
-
-reset_tracked_parameters() {
-	local vlans_seq
-	local vlan_a_seq
-	local vlan_b_seq
-	local vlan_tagging_ops_num
-
-	init_flag=0
-	totalizer_flag=0
-	state_flag=0
-
-	[ -e /tmp/us_vlan_data ] && rm -f /tmp/us_vlan_data
-	[ -e /tmp/ds_mc_tci_data ] && rm -f /tmp/ds_mc_tci_data
-	[ -e /tmp/us_mc_vid_data ] && rm -f /tmp/us_mc_vid_data
-	[ -e /tmp/mibcounter ] && rm -f /tmp/mibcounter
-
-	vlans_seq=0
-	vlan_tagging_ops_num=$(
-		echo "$vlan_tag_ops" |
-			grep -o ":" |
-			grep -c ":"
-	)
-
-	for i in $(seq 1 "$vlan_tagging_ops_num"); do
-		vlan_a_seq=$((i + vlans_seq))
-
-		vlans_seq=$i
-
-		vlan_b_seq=$((i + vlans_seq))
-
-		if [ -e "/tmp/vlan$vlan_a_seq" ] || [ -e "/tmp/vlan$vlan_a_seq" ]; then
-			rm -f /tmp/vlan$vlan_a_seq
-			rm -f /tmp/vlan$vlan_a_seq
-		fi
-	done
-}
 
 collect_olt_type() {
 	local spanning_tree
@@ -255,32 +157,6 @@ collect() {
 	collect_bridge
 }
 
-get_mib_data_sync() {
-	local curr_mib_data_sync
-	local prev_mib_data_sync
-
-	if [ ! -e /tmp/mibcounter ]; then
-		$omci managed_entity_attr_data_get 2 0 1 |
-			cut -f 3 -d '=' |
-			sed -n 's/\(attr\_data\=\)/\1/p' |
-			sed s/[[:space:]]//g >/tmp/mibcounter
-	else
-		curr_mib_data_sync=$(
-			$omci managed_entity_attr_data_get 2 0 1 |
-				cut -f 3 -d '=' |
-				sed -n 's/\(attr\_data\=\)/\1/p' |
-				sed s/[[:space:]]//g
-		)
-
-		prev_mib_data_sync=$(cat /tmp/mibcounter)
-
-		if [ "$curr_mib_data_sync" != "$prev_mib_data_sync" ]; then
-			logger -t "[vlanexec]" "MIB data sync: $curr_mib_data_sync ($prev_mib_data_sync)"
-			echo "$curr_mib_data_sync" >/tmp/mibcounter
-			totalizer_flag=$((totalizer_flag + 1))
-		fi
-	fi
-}
 
 set_me_171() {
 	local hw="48575443"
@@ -512,9 +388,6 @@ delete_vlan_translation() {
 }
 
 check_vlan_translations() {
-	local vlans_seq
-	local vlan_a_seq
-	local vlan_b_seq
 	local vlan_tagging_ops_num
 
 	local tci_a="($vid_pattern)(@([0-7]))?"
@@ -534,54 +407,6 @@ check_vlan_translations() {
 		return
 	fi
 
-	vlan_tagging_ops_num=$(
-		echo "$vlan_tag_ops" |
-			grep -o ":" |
-			grep -c ":"
-	)
-
-	vlans_seq=0
-
-	for i in $(seq 1 "$vlan_tagging_ops_num"); do
-		vlan_a=$(
-			echo "$vlan_tag_ops" |
-				cut -f "$i" -d ',' |
-				cut -f 1 -d ':' |
-				cut -f 1 -d '@'
-		)
-
-		vlan_b=$(
-			echo "$vlan_tag_ops" |
-				cut -f "$i" -d ',' |
-				cut -f 2 -d ':' |
-				cut -f 1 -d '@'
-		)
-
-		vlan_a_seq=$((i + vlans_seq))
-
-		vlans_seq=$i
-
-		vlan_b_seq=$((i + vlans_seq))
-
-		if [ -e "/tmp/vlan$vlan_a_seq" ] && [ -e "/tmp/vlan$vlan_b_seq" ]; then
-			if [ -n "$vlan_a" ] && [ -n "$vlan_b" ]; then
-				echo "$vlan_a" >"/tmp/vlan$vlan_a_seq"
-				echo "$vlan_b" >"/tmp/vlan$vlan_b_seq"
-				totalizer_flag=$((totalizer_flag + 1))
-			fi
-		else
-			prev_vlan_a=$(cat "/tmp/vlan$vlan_a_seq")
-			prev_vlan_b=$(cat "/tmp/vlan$vlan_b_seq")
-
-			if [ "$vlan_a" != "$prev_vlan_a" ] || [ "$vlan_b" != "$prev_vlan_b" ]; then
-				logger -t "[vlanexec]" "Change detected for VLAN translation $i: vlan$vlan_a_seq:vlan$vlan_b_seq $vlan_a:$vlan_b ($prev_vlan_a:$prev_vlan_b)."
-				delete_vlan_translation "$prev_vlan_a"
-				echo "$vlan_a" >"/tmp/vlan$vlan_a_seq"
-				echo "$vlan_b" >"/tmp/vlan$vlan_b_seq"
-				totalizer_flag=$((totalizer_flag + 1))
-			fi
-		fi
-	done
 }
 
 
@@ -1073,24 +898,12 @@ check_me_171() {
 }
 
 main() {
-			if ! check_onu_state; then
-    			logger -t "8311-fixvlan" -p daemon.info "Exiting: ONU not in O5 state"
-    			exit 0
-			fi
-
-			if [ $collect_flag -lt 2 ]; then
-				collect
-				collect_flag=$((collect_flag + 1))
-			fi
-			get_mib_data_sync
-
+			collect
 			check_vlan_translations
-
-				set_me_171
-				set_us_vlan
-				set_mc_vlans
-				set_vlan_translations
-			rest
+			set_me_171
+			set_us_vlan
+			set_mc_vlans
+			set_vlan_translations
 }
 
 
@@ -1098,42 +911,15 @@ main() {
 # 主程序
 # =====================================================
 
-# 获取锁，防止多个实例同时运行
-if ! acquire_lock; then
-    logger -t "8311-fixvlan" -p daemon.info "另一个脚本实例正在运行，退出"
-    exit 2
-fi
-
-# 退出时释放锁
-trap release_lock EXIT INT TERM
-
-
-# ========================================
-# 干掉dect，直接读取vlan
-# ========================================
-
-uvlan=$(fw_printenv -n 8311_uvlan 2>/dev/null)
-mvlansource=$(fw_printenv -n 8311_mvlansource 2>/dev/null)
-multicast_vlan=$(fw_printenv -n 8311_multicast_vlan 2>/dev/null)
-vlan_trans_rules=$(fw_printenv -n 8311_vlan_trans_rules 2>/dev/null)
-igmp_version=$(fw_printenv -n 8311_igmp_version 2>/dev/null || echo "3")
-vlandebug=$(fw_printenv -n 8311_vlandebug 2>/dev/null || echo "1")
-forceuvlan=$(fw_printenv -n 8311_forceuvlan 2>/dev/null || echo "0")
-forcemerule=$(fw_printenv -n 8311_forcemerule 2>/dev/null || echo "0")
-force_me309=$(fw_printenv -n 8311_force_me309 2>/dev/null || echo "0")
-
-# 将配置变量映射到vlanexec.sh使用的变量名
-
-
-us_vlan_id=${uvlan}
-vlan_tag_ops=${vlan_trans_rules}
-ds_mc_tci=${multicast_vlan}
-us_mc_vid=${mvlansource}
-igmp_version=${igmp_version}
-force_me_create=${forcemerule}
-force_me309_create=${force_me309}
-force_us_vlan_id=${forceuvlan}
-vlan_svc_log=${vlandebug}
+us_vlan_id=$(fwenv_get_8311 "us_vlan_id")
+vlan_tag_ops=$(fwenv_get_8311 "vlan_tag_ops")
+ds_mc_tci=$(fwenv_get_8311 "ds_mc_tci")
+us_mc_vid=$(fwenv_get_8311 "us_mc_vlan_id")
+igmp_version=$(fwenv_get_8311 "igmp_version")
+force_me_create=$(fwenv_get_8311 "force_me_create")
+force_me309_create=$(fwenv_get_8311 "force_me309_create")
+force_us_vlan_id=$(fwenv_get_8311 "force_us_vlan_id")
+vlan_svc_log=$(fwenv_get_8311 "vlan_svc_log")
 
 # 验证ONU状态，如果不是O5状态则退出
 if ! check_onu_state; then
