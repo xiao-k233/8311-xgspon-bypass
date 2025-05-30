@@ -9,8 +9,6 @@
 # =====================================================
 
 
-# 添加锁文件，用于并发控制
-LOCK_FILE="/var/lock/8311-fix-vlans.lock"
 
 # OMCI相关命令
 omci="/usr/bin/omci_pipe.sh"
@@ -27,31 +25,6 @@ log_flag=0
 
 vid_pattern='4096|409[0-4]|(40[0-8]|[1-3][[:digit:]][[:digit:]]|[1-9][[:digit:]]|[1-9])[[:digit:]]|[0-9]'
 
-# =====================================================
-# 并发控制函数
-# =====================================================
-
-# 获取锁，防止多个实例同时运行
-acquire_lock() {
-    # 创建锁文件，如果创建失败会返回非零值
-    if [ -e "$LOCK_FILE" ]; then
-        pid=$(cat "$LOCK_FILE" 2>/dev/null)
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            logger -t "8311-fixvlan" -p daemon.info "脚本已在运行，进程ID: $pid"
-            return 1
-        fi
-    fi
-    
-    echo $$ > "$LOCK_FILE"
-    return 0
-}
-
-# 释放锁
-release_lock() {
-    if [ -e "$LOCK_FILE" ]; then
-        rm -f "$LOCK_FILE"
-    fi
-}
 
 # =====================================================
 # 工具函数
@@ -1097,15 +1070,6 @@ main() {
 # =====================================================
 # 主程序
 # =====================================================
-
-# 获取锁，防止多个实例同时运行
-if ! acquire_lock; then
-    logger -t "8311-fixvlan" -p daemon.info "另一个脚本实例正在运行，退出"
-    exit 2
-fi
-
-# 退出时释放锁
-trap release_lock EXIT INT TERM
 
 
 # ========================================
