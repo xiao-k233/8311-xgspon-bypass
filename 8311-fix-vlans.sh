@@ -460,8 +460,7 @@ set_mc_vlans() {
 		)
 
 		if [ -n "$vlan_svc_log" ]; then
-			message=$(cat "Detected multicast GEM interworking TP, multicast GEM port id: " \
-				"$gem_port_id, configuring...")
+			message="Detected multicast GEM interworking TP, multicast GEM port id: ${gem_port_id}, configuring..."
 			logger -t "[vlan]" "$message"
 		fi
 
