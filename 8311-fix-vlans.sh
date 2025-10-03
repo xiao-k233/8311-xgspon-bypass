@@ -1065,7 +1065,9 @@ main() {
 			rest
 }
 
-
+backup() {
+	true;
+}
 # =====================================================
 # 主程序
 # =====================================================
@@ -1074,7 +1076,7 @@ main() {
 # ========================================
 # 干掉dect，直接读取vlan
 # ========================================
-
+mode=$(fw_printenv -n 8311_iopmask 2>/dev/null || echo "0")
 uvlan=$(fw_printenv -n 8311_uvlan 2>/dev/null)
 mvlansource=$(fw_printenv -n 8311_mvlansource 2>/dev/null)
 multicast_vlan=$(fw_printenv -n 8311_multicast_vlan 2>/dev/null)
@@ -1107,7 +1109,12 @@ fi
 # 初始化并配置VLAN规则
 logger -t "8311-fixvlan" -p daemon.info "Starting VLAN configuration..."
 
-main
+if [ "$mode" = "2" ]; then
+    logger -t "8311-fixvlan" -p daemon.info "备用模式"
+	backup
+else
+    main
+fi
 
 logger -t "8311-fixvlan" -p daemon.info "VLAN configuration completed"
 exit 0
