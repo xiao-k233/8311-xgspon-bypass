@@ -1066,7 +1066,46 @@ main() {
 }
 
 backup() {
-	true;
+	local vlan_mode=$1
+	local vlan_id=$2
+	local vlan_priority=$3
+
+	# Check if vlan_id is a number
+	if ! [ "$vlan_id" -eq "$vlan_id" ] 2>/dev/null; then
+		return
+	fi
+
+	# Check if vlan_priority is a number
+	if ! [ "$vlan_priority" -eq "$vlan_priority" ] 2>/dev/null; then
+		return
+	fi
+
+	local del_egress="tc filter del dev eth0_0 egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw"
+	local del_ingress="tc filter del dev eth0_0 ingress handle 0x1 protocol all pref 1 flower skip_sw"
+	logger -t "[vlan]" "Using TC FILTER configuration method"
+	if [ "$vlan_mode" = "tagged" ]; then
+		# Delete existing rules first
+		logger -t "[vlan]" "vlan_mod=tagged  vlanid=$vlan_id vlan_priority=$vlan_priority"
+		$del_egress >/dev/null 2>&1
+		logger -t "[vlan]" "$del_egress"
+		$del_ingress >/dev/null 2>&1
+		logger -t "[vlan]" "$del_ingress"
+		# Add new rules
+		local add_egress_vlan="tc filter add dev eth0_0 egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw vlan_id $vlan_id vlan_prio $((vlan_priority - 1)) action vlan pop pass"
+		local add_ingress_vlan="tc filter add dev eth0_0 ingress handle 0x1 protocol all pref 1 flower skip_sw action vlan push id $vlan_id protocol 802.1Q pass"
+		
+		$add_egress_vlan
+		logger -t "[vlan]" "$add_egress_vlan"
+		$add_ingress_vlan
+		logger -t "[vlan]" "$add_ingress_vlan"
+	elif [ "$vlan_mode" = "untagged" ]; then
+		# Delete existing rules
+		logger -t "[vlan]" "vlan_mod=untagged"
+		$del_egress >/dev/null 2>&1
+		logger -t "[vlan]" "$del_egress"
+		$del_ingress >/dev/null 2>&1
+		logger -t "[vlan]" "$del_ingress"
+	fi
 }
 # =====================================================
 # 主程序
@@ -1110,9 +1149,9 @@ fi
 logger -t "8311-fixvlan" -p daemon.info "Starting VLAN configuration..."
 
 if [ "$mode" = "2" ]; then
-    logger -t "8311-fixvlan" -p daemon.info "备用模式"
 	backup
 else
+	logger -t "8311-fixvlan" -p daemon.info "Using OMCI ME configuration method"
     main
 fi
 
