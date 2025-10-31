@@ -3,6 +3,7 @@
 # shellcheck disable=SC3001
 # shellcheck disable=SC2196
 # shellcheck disable=SC3043
+# shellcheck disable=SC2086
 # VLAN修复脚本
 # =====================================================
 # 脚本全局配置
@@ -13,6 +14,7 @@
 # OMCI相关命令
 omci="/usr/bin/omci_pipe.sh"
 omci_simulate="/usr/bin/omci_simulate"
+TC=$(PATH=/usr/sbin:/sbin /usr/bin/which tc)
 # 全局变量
 
 vlandebug=1
@@ -986,50 +988,100 @@ check_me_171() {
 	fi
 }
 
-main() {
-			if [ $collect_flag -lt 2 ]; then
-				collect
-				collect_flag=$((collect_flag + 1))
-			fi
-			get_mib_data_sync
-
-			check_vlan_translations
-
-			set_me_171
-			set_us_vlan
-			set_mc_vlans
-			set_vlan_translations
+tc() {
+    $TC "$@"
 }
 
-backup() {
+tc_flower_selector() {
+    dev=$(echo "$@" | grep -oE "dev \S+" | head -n1 | cut -d" " -f2)
+    direction=$(echo "$@" | grep -oE  "egress|ingress" | head -n1)
+    handle=$(echo "$@" | grep -oE "handle \S+" | head -n1 | cut -d" " -f2)
+    protocol=$(echo "$@" | grep -oE "protocol \S+" | head -n1 | cut -d" " -f2)
+    pref=$(echo "$@" | grep -oE "pref \S+" | head -n1 | cut -d" " -f2)
+
+    if [ "$1" = "-devdironly" ]; then
+        logger -t "[vlan]"  "dev $dev $direction"
+    else
+        logger -t "[vlan]"  "dev $dev $direction handle $handle pref $pref protocol $protocol flower"
+    fi
+}
 
 
-	local del_egress="tc filter del dev eth0_0 egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw"
-	local del_ingress="tc filter del dev eth0_0 ingress handle 0x1 protocol all pref 1 flower skip_sw"
+tc_flower_get() {
+    tc filter get "$(tc_flower_selector "$@")"
+}
+
+tc_flower_exists() {
+    # shellcheck disable=SC3020
+    tc_flower_get "$@" &>/dev/null
+}
+
+
+
+tc_flower_add() {
+    logger -t "[vlan]" "add $*"
+
+    tc_flower_exists "$@" ||
+    tc filter add "$@"
+}
+
+
+
+tc_flower_clear() {
+   # shellcheck disable=SC2155
+   # shellcheck disable=SC2046
+   local selector=$(tc_flower_selector -devdironly "$@")
+   logger -t "[vlan]" "del $selector"
+
+   tc filter del $selector
+}
+
+main() {
+	logger -t "8311-fixvlan" -p daemon.info "Using OMCI MIB configuration method"
+	if [ $collect_flag -lt 2 ]; then
+		collect
+		collect_flag=$((collect_flag + 1))
+	fi
+	get_mib_data_sync
+	check_vlan_translations
+	set_me_171
+	set_us_vlan
+	set_mc_vlans
+	set_vlan_translations
+}
+tc_method(){
 	logger -t "[vlan]" "Using TC FILTER configuration method"
+	get_mib_data_sync
+	tc_set_mc_vlans
+	tc_set_us_vlan
+}
+tc_set_us_vlan() {
 	if [ "$us_vlan_id" = "u" ]; then
 		# Delete existing rules
 		logger -t "[vlan]" "Configuration for us_vlan_id is: untagged or Pass-through."
-		$del_egress >/dev/null 2>&1
-		logger -t "[vlan]" "$del_egress"
-		$del_ingress >/dev/null 2>&1
-		logger -t "[vlan]" "$del_ingress"
+		tc_flower_clear del dev eth0_0 ingress
+		tc_flower_clear del dev eth0_0 egress
 	elif [ -z "$us_vlan_id" ]; then
 		# Delete existing rules first
 		logger -t "[vlan]" "vlan_mod=tagged  vlanid=$us_vlan_id"
-		$del_egress >/dev/null 2>&1
-		logger -t "[vlan]" "$del_egress"
-		$del_ingress >/dev/null 2>&1
-		logger -t "[vlan]" "$del_ingress"
-		# Add new rules
-		local add_egress_vlan="tc filter add dev eth0_0 egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw vlan_id $us_vlan_id vlan_prio 0 action vlan pop pass"
-		local add_ingress_vlan="tc filter add dev eth0_0 ingress handle 0x1 protocol all pref 1 flower skip_sw action vlan push id $us_vlan_id protocol 802.1Q pass"
-		
-		$add_egress_vlan
-		logger -t "[vlan]" "$add_egress_vlan"
-		$add_ingress_vlan
-		logger -t "[vlan]" "$add_ingress_vlan"
+		tc_flower_clear del dev eth0_0 ingress
+		tc_flower_clear del dev eth0_0 egress
+
+		tc_flower_add dev eth0_0 egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw vlan_id $us_vlan_id action vlan pop pass
+		tc_flower_add dev eth0_0 egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action pass
+		tc_flower_add dev eth0_0 ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action pass
+		tc_flower_add dev eth0_0 ingress handle 0x2 protocol all pref 2 flower skip_sw action vlan push id $us_vlan_id protocol 802.1Q pass
 	fi
+}
+tc_set_mc_vlans(){
+	ds_mc_vid=$(
+		echo "$ds_mc_tci" |
+			cut -f 1 -d '@'
+	)
+	tc_flower_clear del dev eth0_0_2 egress
+	tc_flower_add dev eth0_0_2 egress handle 0x1 protocol 802.1ad pref 1 flower skip_sw action vlan modify id $ds_mc_vid protocol 802.1Q pass
+	tc_flower_add dev eth0_0_2 egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action vlan modify id $ds_mc_vid protocol 802.1Q pass
+	tc_flower_add dev eth0_0_2 egress handle 0x3 protocol all pref 3 flower skip_sw action vlan push id $ds_mc_vid protocol 802.1Q pass
 }
 # =====================================================
 # 主程序
@@ -1072,9 +1124,8 @@ sleep 3
 logger -t "8311-fixvlan" -p daemon.info "Starting VLAN configuration..."
 
 if [ "$mode" = "2" ]; then
-	backup
+	tc_method
 else
-	logger -t "8311-fixvlan" -p daemon.info "Using OMCI MIB configuration method"
     main
 fi
 
