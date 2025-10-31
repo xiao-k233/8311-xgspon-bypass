@@ -1,9 +1,9 @@
 #!/bin/sh
 # shellcheck source=/dev/null
 # shellcheck disable=SC3001
+# shellcheck disable=SC2196
+# shellcheck disable=SC3043
 # VLAN修复脚本
-# 主要功能：根据检测到的配置，使用omci配置VLAN和组播规则，从vlanexec.sh移植
-
 # =====================================================
 # 脚本全局配置
 # =====================================================
@@ -27,13 +27,9 @@ vid_pattern='4096|409[0-4]|(40[0-8]|[1-3][[:digit:]][[:digit:]]|[1-9][[:digit:]]
 # 工具函数
 # =====================================================
 
-# 检查ONU状态是否为O5（正常运行状态）
+# 检查ONU状态是否为O5
 check_onu_state() {
-    # 使用与8311.lua相同的方式获取PLOAM状态
     ploamstate=$(pon psg | cut -b21)
-    
-    # 检查是否为O5状态(50)
-    # [50]	= "O5, Operation state",
     if [ "$ploamstate" != "5" ]; then
         return 1
     fi
@@ -260,7 +256,6 @@ set_us_vlan() {
 		$omci managed_entity_attr_data_set 171 "$me171_instance_id" 6 f8 00 00 00 f8 00 00 00 c0 0f \
 			00 00 00 0f 00 00
 		return
-
 	elif [ "$(echo "$us_vlan_id" | egrep -c "$vid")" -eq 0 ]; then
 		if [ -n "$vlan_svc_log" ]; then
 			logger -t "[vlan]" "There was an errror parsing us_vlan_id: $us_vlan_id."
