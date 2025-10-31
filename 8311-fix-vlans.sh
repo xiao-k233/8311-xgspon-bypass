@@ -17,11 +17,8 @@ omci_simulate="/usr/bin/omci_simulate"
 
 vlandebug=1
 
-init_flag=0
 totalizer_flag=0
 collect_flag=0
-state_flag=0
-log_flag=0
 
 vid_pattern='4096|409[0-4]|(40[0-8]|[1-3][[:digit:]][[:digit:]]|[1-9][[:digit:]]|[1-9])[[:digit:]]|[0-9]'
 
@@ -46,56 +43,6 @@ check_onu_state() {
 
 
 
-reset_log_flag() {
-	log_flag=0
-}
-
-rest() {
-	local time
-
-	if [ $state_flag -lt 20 ]; then
-		time=5
-	else
-		time=15
-	fi
-	sleep $time
-}
-
-reset_tracked_parameters() {
-	local vlans_seq
-	local vlan_a_seq
-	local vlan_b_seq
-	local vlan_tagging_ops_num
-
-	init_flag=0
-	totalizer_flag=0
-	state_flag=0
-
-	[ -e /tmp/us_vlan_data ] && rm -f /tmp/us_vlan_data
-	[ -e /tmp/ds_mc_tci_data ] && rm -f /tmp/ds_mc_tci_data
-	[ -e /tmp/us_mc_vid_data ] && rm -f /tmp/us_mc_vid_data
-	[ -e /tmp/mibcounter ] && rm -f /tmp/mibcounter
-
-	vlans_seq=0
-	vlan_tagging_ops_num=$(
-		echo "$vlan_tag_ops" |
-			grep -o ":" |
-			grep -c ":"
-	)
-
-	for i in $(seq 1 "$vlan_tagging_ops_num"); do
-		vlan_a_seq=$((i + vlans_seq))
-
-		vlans_seq=$i
-
-		vlan_b_seq=$((i + vlans_seq))
-
-		if [ -e "/tmp/vlan$vlan_a_seq" ] || [ -e "/tmp/vlan$vlan_a_seq" ]; then
-			rm -f /tmp/vlan$vlan_a_seq
-			rm -f /tmp/vlan$vlan_a_seq
-		fi
-	done
-}
 
 collect_olt_type() {
 	local spanning_tree
@@ -1045,11 +992,6 @@ check_me_171() {
 }
 
 main() {
-			if ! check_onu_state; then
-    			logger -t "8311-fixvlan" -p daemon.info "Exiting: ONU not in O5 state"
-    			exit 0
-			fi
-
 			if [ $collect_flag -lt 2 ]; then
 				collect
 				collect_flag=$((collect_flag + 1))
@@ -1072,7 +1014,7 @@ backup() {
 	logger -t "[vlan]" "Using TC FILTER configuration method"
 	if [ "$us_vlan_id" = "u" ]; then
 		# Delete existing rules
-		logger -t "[vlan]" "Configuration for us_vlan_id is: untagged."
+		logger -t "[vlan]" "Configuration for us_vlan_id is: untagged or Pass-through."
 		$del_egress >/dev/null 2>&1
 		logger -t "[vlan]" "$del_egress"
 		$del_ingress >/dev/null 2>&1
@@ -1120,7 +1062,6 @@ us_vlan_id=${uvlan}
 vlan_tag_ops=${vlan_trans_rules}
 ds_mc_tci=${multicast_vlan}
 us_mc_vid=${mvlansource}
-igmp_version=${igmp_version}
 force_me_create=${forcemerule}
 force_me309_create=${force_me309}
 force_us_vlan_id=${forceuvlan}
@@ -1131,7 +1072,7 @@ if ! check_onu_state; then
     logger -t "8311-fixvlan" -p daemon.info "Exiting: ONU not in O5 state"
     exit 0
 fi
-
+sleep 3
 # 初始化并配置VLAN规则
 logger -t "8311-fixvlan" -p daemon.info "Starting VLAN configuration..."
 
