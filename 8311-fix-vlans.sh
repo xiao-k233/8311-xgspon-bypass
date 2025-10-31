@@ -1001,8 +1001,10 @@ tc_flower_selector() {
 
     if [ "$1" = "-devdironly" ]; then
         logger -t "[vlan]"  "dev $dev $direction"
+		echo "dev $dev $direction"
     else
         logger -t "[vlan]"  "dev $dev $direction handle $handle pref $pref protocol $protocol flower"
+		echo "dev $dev $direction handle $handle pref $pref protocol $protocol flower"
     fi
 }
 
@@ -1019,6 +1021,7 @@ tc_flower_exists() {
 
 
 tc_flower_add() {
+	echo add "$@"
     logger -t "[vlan]" "add $*"
 
     tc_flower_exists "$@" ||
@@ -1031,6 +1034,7 @@ tc_flower_clear() {
    # shellcheck disable=SC2155
    # shellcheck disable=SC2046
    local selector=$(tc_flower_selector -devdironly "$@")
+   echo del $selector
    logger -t "[vlan]" "del $selector"
 
    tc filter del $selector
@@ -1056,14 +1060,25 @@ tc_method(){
 	tc_set_us_vlan
 }
 tc_set_us_vlan() {
+	if [ -z "$us_vlan_id" ]; then
+		if [ -n "$vlan_svc_log" ]; then
+			logger -t "[vlan]" "No us_vlan_id is configured."
+		fi
+		return
+	elif [ "$(echo "$us_vlan_id" | egrep -c "$vid")" -eq 0 ]; then
+		if [ -n "$vlan_svc_log" ]; then
+			logger -t "[vlan]" "There was an errror parsing us_vlan_id: $us_vlan_id."
+		fi
+		return
+	fi
 	if [ "$us_vlan_id" = "u" ]; then
 		# Delete existing rules
 		logger -t "[vlan]" "Configuration for us_vlan_id is: untagged or Pass-through."
 		tc_flower_clear del dev eth0_0 ingress
 		tc_flower_clear del dev eth0_0 egress
-	elif [ -z "$us_vlan_id" ]; then
+	else
 		# Delete existing rules first
-		logger -t "[vlan]" "vlan_mod=tagged  vlanid=$us_vlan_id"
+		logger -t "[vlan]" "Configuration for us_vlan_id is: $us_vlan_id"
 		tc_flower_clear del dev eth0_0 ingress
 		tc_flower_clear del dev eth0_0 egress
 
@@ -1078,6 +1093,7 @@ tc_set_mc_vlans(){
 		echo "$ds_mc_tci" |
 			cut -f 1 -d '@'
 	)
+	logger -t "[vlan]" "Configuring for multicast_vlan is: $ds_mc_vid"
 	tc_flower_clear del dev eth0_0_2 egress
 	tc_flower_add dev eth0_0_2 egress handle 0x1 protocol 802.1ad pref 1 flower skip_sw action vlan modify id $ds_mc_vid protocol 802.1Q pass
 	tc_flower_add dev eth0_0_2 egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action vlan modify id $ds_mc_vid protocol 802.1Q pass
@@ -1091,7 +1107,7 @@ tc_set_mc_vlans(){
 # ========================================
 # 干掉dect，直接读取vlan
 # ========================================
-mode=$(fw_printenv -n 8311_iopmask 2>/dev/null || echo "0")
+mode=$(fw_printenv -n 8311_fix_vlans 2>/dev/null || echo "0")
 uvlan=$(fw_printenv -n 8311_uvlan 2>/dev/null)
 mvlansource=$(fw_printenv -n 8311_mvlansource 2>/dev/null)
 multicast_vlan=$(fw_printenv -n 8311_multicast_vlan 2>/dev/null)
