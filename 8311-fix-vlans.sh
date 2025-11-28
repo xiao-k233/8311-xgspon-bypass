@@ -1093,6 +1093,11 @@ tc_set_mc_vlans(){
 		echo "$ds_mc_tci" |
 			cut -f 1 -d '@'
 	)
+	if [ -z "$ds_mc_tci" ]; then
+		logger -t "[vlan]" "No ds_mc_tci configured."
+		return
+	fi
+	create_me_309
 	logger -t "[vlan]" "Configuring for multicast_vlan is: $ds_mc_vid"
 	tc_flower_clear del dev eth0_0_2 egress
 	tc_flower_add dev eth0_0_2 egress handle 0x1 protocol 802.1ad pref 1 flower skip_sw action vlan modify id $ds_mc_vid protocol 802.1Q pass
