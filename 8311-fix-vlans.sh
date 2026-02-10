@@ -20,7 +20,7 @@ TC=$(PATH=/usr/sbin:/sbin /usr/bin/which tc)
 vlandebug=1
 
 totalizer_flag=0
-collect_flag=0
+
 
 vid_pattern='4096|409[0-4]|(40[0-8]|[1-3][[:digit:]][[:digit:]]|[1-9][[:digit:]]|[1-9])[[:digit:]]|[0-9]'
 
@@ -63,7 +63,7 @@ collect_olt_type() {
 			break
 		else
 			logger -t "[vlanexec]" "OLT type and spanning tree not detected, waiting..."
-			sleep 2
+			sleep 3
 		fi
 	done
 
@@ -1042,10 +1042,7 @@ tc_flower_clear() {
 
 main() {
 	logger -t "8311-fixvlan" -p daemon.info "Using OMCI MIB configuration method"
-	if [ $collect_flag -lt 2 ]; then
-		collect
-		collect_flag=$((collect_flag + 1))
-	fi
+	collect
 	get_mib_data_sync
 	check_vlan_translations
 	set_me_171
@@ -1055,6 +1052,7 @@ main() {
 }
 tc_method(){
 	logger -t "[vlan]" "Using TC FILTER configuration method"
+	collect
 	get_mib_data_sync
 	tc_set_mc_vlans
 	tc_set_us_vlan
@@ -1143,7 +1141,6 @@ fi
 sleep 3
 # 初始化并配置VLAN规则
 logger -t "8311-fixvlan" -p daemon.info "Starting VLAN configuration..."
-
 if [ "$mode" = "2" ]; then
 	tc_method
 else
